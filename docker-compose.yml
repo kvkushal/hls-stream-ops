@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: hls-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=development
+      - BACKEND_PORT=5000
+      - MONGO_URI=mongodb://mongo:27017/hls_monitor
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      - mongo
+    networks:
+      - hls-network
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: hls-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - hls-network
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  mongo:
+    image: mongo:7
+    container_name: hls-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - hls-network
+    restart: unless-stopped
+
+  nginx:
+    build: ./nginx
+    container_name: hls-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - hls-network
+    restart: unless-stopped
+
+networks:
+  hls-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
