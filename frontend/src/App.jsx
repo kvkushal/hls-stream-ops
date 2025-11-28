@@ -1,39 +1,73 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import io from 'socket.io-client'
+import Sidebar from './components/Sidebar'
+import Dashboard from './components/Dashboard'
+import StreamDetail from './components/StreamDetail'
 
 const API_URL = 'http://localhost:5000'
 
 function App() {
   const [streams, setStreams] = useState([])
-  const [newStreamUrl, setNewStreamUrl] = useState('')
-  const [newStreamName, setNewStreamName] = useState('')
+  const [selectedStream, setSelectedStream] = useState(null)
   const [socket, setSocket] = useState(null)
   const [liveMetrics, setLiveMetrics] = useState({})
+  const [alerts, setAlerts] = useState([])
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const audioContextRef = useRef(null)
 
-  // Connect to WebSocket
+  // Initialize audio context on user interaction
+  const initAudio = () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)()
+    }
+  }
+
+  // WebSocket connection
   useEffect(() => {
     const newSocket = io(API_URL)
     setSocket(newSocket)
 
     newSocket.on('metrics', (data) => {
-      console.log('Received metrics:', data)
       setLiveMetrics(prev => ({
         ...prev,
-        [data.url]: data
+        [data.streamId]: data
       }))
+
+      // Add alert for warnings/errors
+      if (data.metrics.status !== 'ok') {
+        const alertMsg = {
+          streamId: data.streamId,
+          type: data.metrics.status,
+          message: `${data.url}: ${data.metrics.status === 'error' ? 'Error' : 'Warning'} - Latency ${data.metrics.latency}ms`,
+          timestamp: new Date()
+        }
+        addAlert(alertMsg)
+        
+        if (data.metrics.status === 'error') {
+          playAlertSound()
+        }
+      }
     })
 
-    newSocket.on('error', (data) => {
-      console.error('Stream error:', data)
+    newSocket.on('stream-error', (data) => {
+      const alertMsg = {
+        streamId: data.streamId,
+        type: 'error',
+        message: `${data.url}: ${data.error.message}`,
+        timestamp: new Date()
+      }
+      addAlert(alertMsg)
+      playAlertSound()
     })
 
     return () => newSocket.close()
   }, [])
 
-  // Fetch streams on load
   useEffect(() => {
     fetchStreams()
+    const interval = setInterval(fetchStreams, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   const fetchStreams = async () => {
@@ -45,143 +79,141 @@ function App() {
     }
   }
 
-  const addStream = async (e) => {
-    e.preventDefault()
-    if (!newStreamUrl) return
+  const addAlert = (alert) => {
+    setAlerts(prev => {
+      const newAlerts = [alert, ...prev].slice(0, 100)
+      // Show browser notification for errors
+      if (alert.type === 'error' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification('🚨 HLS Stream Error', {
+          body: alert.message,
+          icon: '/favicon.ico'
+        })
+      }
+      return newAlerts
+    })
+  }
 
+  const playAlertSound = () => {
+    if (!soundEnabled) return
+    
     try {
-      await axios.post(`${API_URL}/api/streams`, {
-        url: newStreamUrl,
-        name: newStreamName || newStreamUrl
-      })
-      setNewStreamUrl('')
-      setNewStreamName('')
-      fetchStreams()
-    } catch (error) {
-      alert('Error adding stream: ' + error.response?.data?.error)
+      initAudio()
+      const audioContext = audioContextRef.current
+      
+      // Create a more noticeable alert sound (three beeps)
+      const now = audioContext.currentTime
+      
+      for (let i = 0; i < 3; i++) {
+        const oscillator = audioContext.createOscillator()
+        const gainNode = audioContext.createGain()
+        
+        oscillator.connect(gainNode)
+        gainNode.connect(audioContext.destination)
+        
+        oscillator.frequency.value = 880 // A5 note
+        oscillator.type = 'sine'
+        
+        const startTime = now + (i * 0.3)
+        gainNode.gain.setValueAtTime(0.3, startTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2)
+        
+        oscillator.start(startTime)
+        oscillator.stop(startTime + 0.2)
+      }
+    } catch (e) {
+      console.log('Audio not supported:', e)
     }
   }
 
-  const deleteStream = async (id) => {
+  const handleAddStream = async (url, name) => {
+    initAudio() // Initialize audio on user interaction
+    try {
+      await axios.post(`${API_URL}/api/streams`, { url, name })
+      fetchStreams()
+      return true
+    } catch (error) {
+      throw new Error(error.response?.data?.error || error.message)
+    }
+  }
+
+  const handleDeleteStream = async (id) => {
     try {
       await axios.delete(`${API_URL}/api/streams/${id}`)
+      if (selectedStream?._id === id) {
+        setSelectedStream(null)
+      }
       fetchStreams()
     } catch (error) {
-      console.error('Error deleting stream:', error)
+      alert('Error deleting stream')
     }
   }
 
-  const getStreamStatus = (stream) => {
-    const metrics = liveMetrics[stream.url]
-    if (!metrics) return 'waiting'
-    if (metrics.status === 'ok') return 'healthy'
-    return 'error'
+  const handleSelectStream = (stream) => {
+    initAudio() // Initialize audio on user interaction
+    setSelectedStream(stream)
   }
 
-  const formatBitrate = (bitrate) => {
-    if (!bitrate) return 'N/A'
-    return (bitrate / 1000000).toFixed(2) + ' Mbps'
+  const toggleSound = () => {
+    setSoundEnabled(!soundEnabled)
+  }
+
+  const testAlertSound = () => {
+    initAudio()
+    playAlertSound()
+  }
+
+  const requestNotificationPermission = () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
   }
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1>🎥 HLS Stream Monitor</h1>
+    <div className="app" onClick={initAudio}>
+      <Sidebar 
+        streams={streams}
+        liveMetrics={liveMetrics}
+        selectedStream={selectedStream}
+        onSelectStream={handleSelectStream}
+        onAddStream={handleAddStream}
+        onRefresh={fetchStreams}
+      />
       
-      {/* Add Stream Form */}
-      <div style={{ background: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '30px' }}>
-        <h2>Add New Stream</h2>
-        <form onSubmit={addStream} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            placeholder="Stream URL (e.g., https://...m3u8)"
-            value={newStreamUrl}
-            onChange={(e) => setNewStreamUrl(e.target.value)}
-            style={{ flex: '2', padding: '10px', fontSize: '14px' }}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Stream Name (optional)"
-            value={newStreamName}
-            onChange={(e) => setNewStreamName(e.target.value)}
-            style={{ flex: '1', padding: '10px', fontSize: '14px' }}
-          />
-          <button type="submit" style={{ padding: '10px 20px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-            Add Stream
+      <div className="main-content">
+        {/* Alert Controls */}
+        <div className="alert-controls">
+          <button 
+            onClick={toggleSound} 
+            className={`btn-toggle-sound ${soundEnabled ? 'enabled' : 'disabled'}`}
+            title={soundEnabled ? 'Sound Enabled' : 'Sound Disabled'}
+          >
+            {soundEnabled ? '🔔 Sound ON' : '🔕 Sound OFF'}
           </button>
-        </form>
-      </div>
-
-      {/* Stream List */}
-      <h2>Active Streams ({streams.length})</h2>
-      
-      {streams.length === 0 ? (
-        <p>No streams yet. Add one above!</p>
-      ) : (
-        <div style={{ display: 'grid', gap: '20px' }}>
-          {streams.map(stream => {
-            const status = getStreamStatus(stream)
-            const metrics = liveMetrics[stream.url]
-            
-            return (
-              <div key={stream._id} style={{
-                border: '2px solid #ddd',
-                borderRadius: '8px',
-                padding: '20px',
-                background: 'white',
-                borderColor: status === 'healthy' ? '#28a745' : status === 'error' ? '#dc3545' : '#ffc107'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '15px' }}>
-                  <div>
-                    <h3 style={{ margin: '0 0 5px 0' }}>{stream.name}</h3>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#666', wordBreak: 'break-all' }}>{stream.url}</p>
-                  </div>
-                  <button 
-                    onClick={() => deleteStream(stream._id)}
-                    style={{ padding: '5px 15px', background: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                  >
-                    Delete
-                  </button>
-                </div>
-
-                {/* Metrics */}
-                {metrics ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' }}>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>Status</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: metrics.status === 'ok' ? '#28a745' : '#dc3545' }}>
-                        {metrics.status === 'ok' ? '✓ Healthy' : '✗ Error'}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>Latency</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{metrics.metrics.latency}ms</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>Bitrate</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{formatBitrate(metrics.metrics.bitrate)}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>Variants</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{metrics.metrics.variantCount}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>Segment Duration</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{metrics.metrics.segmentDuration}s</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#666' }}>Last Updated</div>
-                      <div style={{ fontSize: '14px' }}>{new Date(metrics.timestamp).toLocaleTimeString()}</div>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ color: '#666', fontStyle: 'italic' }}>Waiting for metrics...</div>
-                )}
-              </div>
-            )
-          })}
+          <button onClick={testAlertSound} className="btn-test-sound">
+            🎵 Test Alert
+          </button>
+          {('Notification' in window && Notification.permission === 'default') && (
+            <button onClick={requestNotificationPermission} className="btn-enable-notifications">
+              🔔 Enable Notifications
+            </button>
+          )}
         </div>
-      )}
+
+        {selectedStream ? (
+          <StreamDetail 
+            stream={selectedStream}
+            liveMetrics={liveMetrics[selectedStream._id]}
+            onDelete={handleDeleteStream}
+          />
+        ) : (
+          <Dashboard 
+            streams={streams}
+            liveMetrics={liveMetrics}
+            alerts={alerts}
+            onSelectStream={handleSelectStream}
+          />
+        )}
+      </div>
     </div>
   )
 }

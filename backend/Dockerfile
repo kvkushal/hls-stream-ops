@@ -1,6 +1,12 @@
 FROM node:20-alpine
 
+# Install ffmpeg
+RUN apk add --no-cache ffmpeg
+
 WORKDIR /app
+
+# Create sprites directory
+RUN mkdir -p /app/public/sprites
 
 COPY package*.json ./
 
