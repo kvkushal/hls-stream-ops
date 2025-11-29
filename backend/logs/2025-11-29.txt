@@ -1,0 +1,36 @@
+2025-11-29 03:57:12 | INFO     | SYSTEM                    | Server started on port 5000
+2025-11-29 03:57:12 | INFO     | SYSTEM                    | MongoDB connected
+2025-11-29 04:24:09 | INFO     | SYSTEM                    | Server started on port 5000
+2025-11-29 04:24:09 | INFO     | SYSTEM                    | MongoDB connected
+2025-11-29 04:31:19 | INFO     | SYSTEM                    | Server shutting down
+2025-11-29 04:33:24 | INFO     | SYSTEM                    | Server started on port 5000
+2025-11-29 04:33:24 | INFO     | SYSTEM                    | MongoDB connected
+2025-11-29 04:34:07 | INFO     | WEBSOCKET                 | Client connected: i8pdZN2PgvSlj-gdAAAC
+2025-11-29 04:35:37 | INFO     | STREAM: Bad Test          | Stream added | {"url":"https://example.com/invalid.m3u8 "}
+2025-11-29 04:35:37 | INFO     | STREAM: Bad Test          | Monitor started | {"url":"https://example.com/invalid.m3u8 "}
+2025-11-29 04:35:39 | MEDIUM   | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":1}
+2025-11-29 04:35:49 | MEDIUM   | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":2}
+2025-11-29 04:35:59 | MEDIUM   | STREAM: Bad Test          | ERROR: Request failed with status code 404 | {"url":"https://example.com/invalid.m3u8 ","code":"ERR_BAD_REQUEST","consecutiveErrors":3}
+2025-11-29 04:36:10 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":4}
+2025-11-29 04:36:20 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":5}
+2025-11-29 04:36:30 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":6}
+2025-11-29 04:36:40 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":7}
+2025-11-29 04:36:50 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":8}
+2025-11-29 04:37:00 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":9}
+2025-11-29 04:37:04 | INFO     | WEBSOCKET                 | Client disconnected: i8pdZN2PgvSlj-gdAAAC
+2025-11-29 04:37:08 | INFO     | WEBSOCKET                 | Client connected: pmHrC6KiHMZGaypNAAAF
+2025-11-29 04:37:10 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":10}
+2025-11-29 04:37:20 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":11}
+2025-11-29 04:37:30 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":12}
+2025-11-29 04:37:41 | HIGH     | STREAM: Bad Test          | ERROR: Request failed with status code 404 | {"url":"https://example.com/invalid.m3u8 ","code":"ERR_BAD_REQUEST","consecutiveErrors":13}
+2025-11-29 04:37:54 | HIGH     | STREAM: Bad Test          | ERROR: timeout of 5000ms exceeded | {"url":"https://example.com/invalid.m3u8 ","code":"ECONNABORTED","consecutiveErrors":14}
+2025-11-29 04:38:00 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":15}
+2025-11-29 04:38:10 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":16}
+2025-11-29 04:38:20 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":17}
+2025-11-29 04:38:34 | HIGH     | STREAM: Bad Test          | ERROR: timeout of 5000ms exceeded | {"url":"https://example.com/invalid.m3u8 ","code":"ECONNABORTED","consecutiveErrors":18}
+2025-11-29 04:38:40 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":19}
+2025-11-29 04:38:54 | HIGH     | STREAM: Bad Test          | ERROR: timeout of 5000ms exceeded | {"url":"https://example.com/invalid.m3u8 ","code":"ECONNABORTED","consecutiveErrors":20}
+2025-11-29 04:38:54 | INFO     | WEBSOCKET                 | Client disconnected: pmHrC6KiHMZGaypNAAAF
+2025-11-29 04:39:00 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":21}
+2025-11-29 04:39:11 | HIGH     | STREAM: Bad Test          | ERROR: Error | {"url":"https://example.com/invalid.m3u8 ","code":"ETIMEDOUT","consecutiveErrors":22}
+2025-11-29 04:39:19 | INFO     | SYSTEM                    | Server shutting down

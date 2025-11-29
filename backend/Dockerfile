@@ -1,12 +1,16 @@
 FROM node:20-alpine
 
-# Install ffmpeg
-RUN apk add --no-cache ffmpeg
+# Install ffmpeg and required codecs
+RUN apk add --no-cache \
+    ffmpeg \
+    ffmpeg-libs \
+    x264 \
+    x265
 
 WORKDIR /app
 
-# Create sprites directory
-RUN mkdir -p /app/public/sprites
+# Create directories
+RUN mkdir -p /app/public/sprites /app/logs
 
 COPY package*.json ./
 

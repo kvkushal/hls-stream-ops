@@ -1,0 +1,4 @@
+2025-11-28 17:56:31 | INFO     | SYSTEM                    | Server started on port 5000
+2025-11-28 17:56:31 | INFO     | SYSTEM                    | MongoDB connected
+2025-11-28 17:57:01 | INFO     | WEBSOCKET                 | Client connected: jwimITS6NEF0TSAlAAAC
+2025-11-28 17:57:27 | INFO     | WEBSOCKET                 | Client disconnected: jwimITS6NEF0TSAlAAAC

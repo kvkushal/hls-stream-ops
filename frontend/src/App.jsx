@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import io from 'socket.io-client'
-import Sidebar from './components/Sidebar'
-import Dashboard from './components/Dashboard'
-import StreamDetail from './components/StreamDetail'
+import GridView from './components/GridView'
+import DetailView from './components/DetailView'
+import Header from './components/Header'
 
 const API_URL = 'http://localhost:5000'
 
@@ -12,11 +12,10 @@ function App() {
   const [selectedStream, setSelectedStream] = useState(null)
   const [socket, setSocket] = useState(null)
   const [liveMetrics, setLiveMetrics] = useState({})
-  const [alerts, setAlerts] = useState([])
   const [soundEnabled, setSoundEnabled] = useState(true)
   const audioContextRef = useRef(null)
 
-  // Initialize audio context on user interaction
+  // Initialize audio
   const initAudio = () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)()
@@ -33,36 +32,24 @@ function App() {
         ...prev,
         [data.streamId]: data
       }))
-
-      // Add alert for warnings/errors
-      if (data.metrics.status !== 'ok') {
-        const alertMsg = {
-          streamId: data.streamId,
-          type: data.metrics.status,
-          message: `${data.url}: ${data.metrics.status === 'error' ? 'Error' : 'Warning'} - Latency ${data.metrics.latency}ms`,
-          timestamp: new Date()
-        }
-        addAlert(alertMsg)
-        
-        if (data.metrics.status === 'error') {
-          playAlertSound()
-        }
-      }
     })
 
     newSocket.on('stream-error', (data) => {
-      const alertMsg = {
-        streamId: data.streamId,
-        type: 'error',
-        message: `${data.url}: ${data.error.message}`,
-        timestamp: new Date()
+      if (soundEnabled) {
+        playAlertSound()
       }
-      addAlert(alertMsg)
-      playAlertSound()
+      
+      // Browser notification
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('🚨 HLS Stream Error', {
+          body: `${data.error.message}`,
+          icon: '/favicon.ico'
+        })
+      }
     })
 
     return () => newSocket.close()
-  }, [])
+  }, [soundEnabled])
 
   useEffect(() => {
     fetchStreams()
@@ -79,30 +66,13 @@ function App() {
     }
   }
 
-  const addAlert = (alert) => {
-    setAlerts(prev => {
-      const newAlerts = [alert, ...prev].slice(0, 100)
-      // Show browser notification for errors
-      if (alert.type === 'error' && 'Notification' in window && Notification.permission === 'granted') {
-        new Notification('🚨 HLS Stream Error', {
-          body: alert.message,
-          icon: '/favicon.ico'
-        })
-      }
-      return newAlerts
-    })
-  }
-
   const playAlertSound = () => {
-    if (!soundEnabled) return
-    
     try {
       initAudio()
       const audioContext = audioContextRef.current
-      
-      // Create a more noticeable alert sound (three beeps)
       const now = audioContext.currentTime
       
+      // Three beeps
       for (let i = 0; i < 3; i++) {
         const oscillator = audioContext.createOscillator()
         const gainNode = audioContext.createGain()
@@ -110,7 +80,7 @@ function App() {
         oscillator.connect(gainNode)
         gainNode.connect(audioContext.destination)
         
-        oscillator.frequency.value = 880 // A5 note
+        oscillator.frequency.value = 880
         oscillator.type = 'sine'
         
         const startTime = now + (i * 0.3)
@@ -121,12 +91,12 @@ function App() {
         oscillator.stop(startTime + 0.2)
       }
     } catch (e) {
-      console.log('Audio not supported:', e)
+      console.log('Audio not supported')
     }
   }
 
   const handleAddStream = async (url, name) => {
-    initAudio() // Initialize audio on user interaction
+    initAudio()
     try {
       await axios.post(`${API_URL}/api/streams`, { url, name })
       fetchStreams()
@@ -149,8 +119,12 @@ function App() {
   }
 
   const handleSelectStream = (stream) => {
-    initAudio() // Initialize audio on user interaction
+    initAudio()
     setSelectedStream(stream)
+  }
+
+  const handleBackToGrid = () => {
+    setSelectedStream(null)
   }
 
   const toggleSound = () => {
@@ -162,58 +136,32 @@ function App() {
     playAlertSound()
   }
 
-  const requestNotificationPermission = () => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
-  }
-
   return (
     <div className="app" onClick={initAudio}>
-      <Sidebar 
-        streams={streams}
-        liveMetrics={liveMetrics}
-        selectedStream={selectedStream}
-        onSelectStream={handleSelectStream}
+      <Header 
+        soundEnabled={soundEnabled}
+        onToggleSound={toggleSound}
+        onTestSound={testAlertSound}
+        streamCount={streams.length}
         onAddStream={handleAddStream}
-        onRefresh={fetchStreams}
+        onBackToGrid={selectedStream ? handleBackToGrid : null}
       />
       
-      <div className="main-content">
-        {/* Alert Controls */}
-        <div className="alert-controls">
-          <button 
-            onClick={toggleSound} 
-            className={`btn-toggle-sound ${soundEnabled ? 'enabled' : 'disabled'}`}
-            title={soundEnabled ? 'Sound Enabled' : 'Sound Disabled'}
-          >
-            {soundEnabled ? '🔔 Sound ON' : '🔕 Sound OFF'}
-          </button>
-          <button onClick={testAlertSound} className="btn-test-sound">
-            🎵 Test Alert
-          </button>
-          {('Notification' in window && Notification.permission === 'default') && (
-            <button onClick={requestNotificationPermission} className="btn-enable-notifications">
-              🔔 Enable Notifications
-            </button>
-          )}
-        </div>
-
-        {selectedStream ? (
-          <StreamDetail 
-            stream={selectedStream}
-            liveMetrics={liveMetrics[selectedStream._id]}
-            onDelete={handleDeleteStream}
-          />
-        ) : (
-          <Dashboard 
-            streams={streams}
-            liveMetrics={liveMetrics}
-            alerts={alerts}
-            onSelectStream={handleSelectStream}
-          />
-        )}
-      </div>
+      {selectedStream ? (
+        <DetailView 
+          stream={selectedStream}
+          liveMetrics={liveMetrics[selectedStream._id]}
+          onDelete={handleDeleteStream}
+          onBack={handleBackToGrid}
+        />
+      ) : (
+        <GridView 
+          streams={streams}
+          liveMetrics={liveMetrics}
+          onSelectStream={handleSelectStream}
+          onRefresh={fetchStreams}
+        />
+      )}
     </div>
   )
 }
