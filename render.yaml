@@ -22,5 +22,5 @@ services:
     plan: free
     envVars:
       - key: PORT
-        value: 80
+        value: 8080
     # Nginx proxies /api to http://api:8000 (internal DNS)
