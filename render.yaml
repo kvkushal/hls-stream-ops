@@ -1,0 +1,26 @@
+services:
+  # Backend Service
+  - type: web
+    name: api
+    env: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: HOST
+        value: 0.0.0.0
+    healthCheckPath: /health
+
+  # Frontend Service
+  - type: web
+    name: frontend
+    env: docker
+    rootDir: frontend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: PORT
+        value: 80
+    # Nginx proxies /api to http://api:8000 (internal DNS)
