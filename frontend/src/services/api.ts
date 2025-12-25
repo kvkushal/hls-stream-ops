@@ -9,7 +9,10 @@
 
 import axios from 'axios'
 
-const API_BASE_URL = '/api'
+// Use environment variable for production (Render), fallback to /api for local dev
+const API_BASE_URL = import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL}/api`
+    : '/api'
 
 const api = axios.create({
     baseURL: API_BASE_URL,
