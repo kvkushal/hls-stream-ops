@@ -13,8 +13,14 @@ class Settings(BaseSettings):
     PORT: int = 8000
     WORKERS: int = 4
     
-    # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost", "http://localhost:3000", "http://localhost:80"]
+    # CORS - Allow localhost and Render domains
+    CORS_ORIGINS: list[str] = [
+        "http://localhost", 
+        "http://localhost:3000", 
+        "http://localhost:80",
+        "https://hls-stream-ops.onrender.com",
+        "https://hls-stream-ops-api.onrender.com"
+    ]
     
     # Storage
     LOGS_DIR: str = "./logs"
