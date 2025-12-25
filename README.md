@@ -1,6 +1,6 @@
-# HLS Stream Operations Platform
+# HLS Stream Operations
 
-A layered HLS stream monitoring system with incident detection, root-cause classification, and metrics-based analysis for stream reliability.
+A layered HLS stream monitoring platform with incident detection, root-cause classification, and metrics-based analysis for stream reliability.
 
 ## Design Philosophy
 
@@ -12,9 +12,11 @@ This system separates **detection**, **diagnosis**, and **analysis** into distin
 |------|---------|-----|
 | **Monitoring** | Is something wrong? | Stream list + health badges |
 | **Investigation** | What broke and why? | Timeline + root cause |
-| **Analysis** | Is this systemic? | Charts (TTFB, errors, ratio) |
+| **Analysis** | Is this getting worse? | Charts (TTFB, errors, ratio) |
 
 **Why charts are hidden by default**: Operators should see clarity first. Charts support investigation, they don't replace it.
+
+**Data strategy**: Configuration is persisted via a lightweight JSON file. Operational state (metrics, health) remains in-memory with rolling windows. Health decisions use short 2-minute windows; analysis uses longer 30-60 minute history.
 
 ## Core Features
 
@@ -55,13 +57,15 @@ Rule-based, NO ML, fully explainable:
 
 ## Quick Start
 
+### TL;DR for Demo
+- **Frontend**: Deploy on Vercel
+- **Backend**: Deploy on Render
+- **Local**: `docker compose up --build` → http://localhost:3000
+
 ### Docker
 ```bash
-docker compose down
 docker compose up --build
 ```
-
-Access: `http://localhost:3000`
 
 ### Local Development
 ```bash
@@ -97,8 +101,6 @@ cd frontend && npm install && npm run dev
 | Audio loudness | DSP accuracy is a rabbit hole |
 | Authentication | Demo context only |
 
-**Why no database**: Bounded history in memory is sufficient. This simplifies deployment and demonstrates scope control.
-
 ## API Endpoints
 
 ```
@@ -107,6 +109,7 @@ GET  /api/streams/{id}                  # Details + root cause
 GET  /api/streams/{id}/metrics/history  # Chart data
 GET  /api/incidents                     # All incidents
 POST /api/incidents/{id}/acknowledge    # Acknowledge
+GET  /health                            # System health
 ```
 
 ## Resume Line

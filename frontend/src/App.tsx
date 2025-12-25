@@ -278,8 +278,9 @@ const AnalysisPanel: React.FC<{ streamId: string }> = ({ streamId }) => {
 
     return (
         <div className="space-y-4">
-            <div className="bg-gray-800 p-3 rounded-lg text-center text-sm text-gray-400">
-                Analysis Mode — Metrics from the last 30 minutes
+            <div className="bg-gray-800 p-3 rounded-lg text-center">
+                <div className="text-sm text-gray-400">Analysis Mode — Metrics from the last 30 minutes</div>
+                <div className="text-xs text-gray-500 mt-1">Charts support diagnosis, they do not define health.</div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

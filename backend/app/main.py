@@ -13,8 +13,8 @@ import logging
 from pathlib import Path
 
 from app.config import settings
-from app.api import streams, websocket, health
-from app.api import incidents  # NEW: Incident endpoints
+from app.api import streams, websocket
+from app.api import incidents  # Incident endpoints
 from app.services.stream_monitor import stream_monitor
 from app.models import HealthStatus
 from datetime import datetime
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Lifecycle manager for startup and shutdown."""
     # Startup
-    logger.info(f"Starting Stream Failure Analysis Tool v2.0.0")
+    logger.info(f"Starting HLS Stream Operations v2.0.0")
     
     # Start stream monitor
     await stream_monitor.start()
@@ -53,9 +53,9 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Stream Failure Analysis Tool",
+    title="HLS Stream Operations",
     version="2.0.0",
-    description="Incident-driven HLS stream failure analysis for broadcast operations",
+    description="Layered HLS monitoring with incident detection and root-cause classification",
     lifespan=lifespan
 )
 
@@ -77,25 +77,21 @@ app.mount("/data", StaticFiles(directory=str(data_dir)), name="data")
 app.include_router(streams.router)
 app.include_router(incidents.router, prefix="/api", tags=["incidents"])
 app.include_router(websocket.router)
-app.include_router(health.router)
-
-# Removed: export_api, webhooks_api (out of scope)
-
 
 @app.get("/")
 async def root():
     """Root endpoint."""
     return {
-        "name": "Stream Failure Analysis Tool",
+        "name": "HLS Stream Operations",
         "version": "2.0.0",
-        "description": "Incident-driven HLS stream failure analysis",
+        "description": "Layered HLS monitoring with incident detection and root-cause classification",
         "status": "running"
     }
 
 
 @app.get("/health", response_model=HealthStatus)
 async def health_check():
-    """Health check endpoint."""
+    """System health check endpoint."""
     from app.services.incident_service import incident_service
     
     return HealthStatus(
