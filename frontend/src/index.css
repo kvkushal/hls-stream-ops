@@ -1,126 +1,47 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/**
+ * CSS for Stream Failure Analysis Tool
+ * 
+ * Using Tailwind CSS with minimal custom styles.
+ * Dark theme optimized for broadcast operations environment.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --elecard-bg: #1a252f;
-  --elecard-card: #2c3e50;
-  --elecard-border: #3a4a5a;
-  --elecard-text: #e2e8f0;
-  --elecard-accent: #3b82f6;
-  --elecard-orange: #f59e0b;
-  --elecard-red: #ef4444;
-  --elecard-green: #10b981;
-}
-
+/* Base styles */
 body {
-  margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: var(--elecard-bg);
-  color: var(--elecard-text);
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #030712; /* gray-950 */
+    color: #f3f4f6; /* gray-100 */
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-
-/* Scrollbar styling */
+/* Custom scrollbar for dark theme */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--elecard-bg);
+    background: #111827; /* gray-900 */
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--elecard-card);
-  border-radius: 4px;
+    background: #374151; /* gray-700 */
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--elecard-border);
+    background: #4b5563; /* gray-600 */
 }
 
-/* Button styles */
-.btn {
-  @apply px-3 py-1.5 rounded-md font-medium transition-all duration-200;
-}
-
-.btn-primary {
-  @apply bg-blue-600 hover:bg-blue-700 text-white;
-}
-
-.btn-secondary {
-  @apply bg-gray-600 hover:bg-gray-700 text-white;
-}
-
-.btn-active {
-  @apply bg-orange-500 text-white;
-}
-
-/* Card styles */
-.card {
-  @apply bg-elecard-card rounded-lg border border-elecard-border;
-}
-
-/* Timeline preview tooltip */
-.timeline-preview {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%) translateY(-10px);
-  background: rgba(0, 0, 0, 0.95);
-  border: 2px solid #ffffff;
-  border-radius: 4px;
-  padding: 4px;
-  pointer-events: none;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-}
-
-.timeline-preview img {
-  display: block;
-  border-radius: 2px;
-}
-
-.timeline-preview-timestamp {
-  position: absolute;
-  bottom: 4px;
-  left: 4px;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 2px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 2px;
-}
-
-/* Badge styles */
-.badge {
-  @apply inline-flex items-center px-2 py-1 rounded text-xs font-semibold;
-}
-
-.badge-green {
-  @apply bg-green-600 text-white;
-}
-
-.badge-orange {
-  @apply bg-orange-500 text-white;
-}
-
-.badge-red {
-  @apply bg-red-600 text-white;
-}
-
-.badge-gray {
-  @apply bg-gray-600 text-white;
+/* Focus states for accessibility */
+input:focus, button:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
 }

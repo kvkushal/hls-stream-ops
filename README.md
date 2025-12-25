@@ -1,57 +1,118 @@
-# HLS Monitoring System
+# HLS Stream Operations Platform
 
-A professional-grade HLS stream monitoring solution designed for OTT broadcasters. This system provides real-time analysis, health monitoring, and visualization of HLS streams, inspired by industry standards like Elecard Boro.
+A layered HLS stream monitoring system with incident detection, root-cause classification, and metrics-based analysis for stream reliability.
 
-![Dashboard Preview](frontend/public/screenshot.png)
+## Design Philosophy
 
-## 🚀 Features
+> "Operators don't need more metrics — they need faster diagnosis."
 
-- **Real-time Monitoring**: Track bitrate, download speed, TTFB, and sequence numbers.
-- **Health Analysis**: Automated health scoring (0-100%) based on stream performance.
-- **Error Detection**: Detects 404s, timeouts, manifest errors, and continuity issues.
-- **Visual Timeline**: Interactive timeline with thumbnails and error events.
-- **Audio Analysis**: Real-time loudness monitoring (LUFS/RMS) and audio configuration detection.
-- **SCTE-35 Support**: Detection and logging of SCTE-35 ad insertion markers.
-- **Multi-Stream Support**: Monitor multiple streams simultaneously in a grid view.
+This system separates **detection**, **diagnosis**, and **analysis** into distinct modes:
 
-## 🛠️ Tech Stack
+| Mode | Purpose | UI |
+|------|---------|-----|
+| **Monitoring** | Is something wrong? | Stream list + health badges |
+| **Investigation** | What broke and why? | Timeline + root cause |
+| **Analysis** | Is this systemic? | Charts (TTFB, errors, ratio) |
 
-- **Backend**: Python (FastAPI), AsyncIO, FFmpeg/FFprobe
-- **Frontend**: React, TypeScript, Tailwind CSS, Recharts
-- **Infrastructure**: Docker, Nginx
+**Why charts are hidden by default**: Operators should see clarity first. Charts support investigation, they don't replace it.
 
-## 🏃‍♂️ Quick Start
+## Core Features
 
-### Prerequisites
-- Docker & Docker Compose
+### 1. Monitoring Mode
+- Stream list with HEALTHY/DEGRADED/UNHEALTHY badges
+- One-line reason: "Average TTFB 720ms exceeded 500ms threshold (last 2 min)"
+- Active incident indicators
+- No charts — maximum clarity
 
-### Run Locally
+### 2. Investigation Mode
+- Incident timeline (primary diagnostic artifact)
+- **Root cause classification** with evidence:
+  - Origin/CDN Outage (High confidence)
+  - Encoder/Packager Issue (Medium confidence)
+  - Network Congestion (Medium confidence)
+  - CDN Edge Latency (Low confidence)
+- Acknowledge incident action
+
+### 3. Analysis Mode
+- TTFB over time with threshold line
+- Error rate per minute
+- Download ratio trend
+- Health state timeline
+
+## Root Cause Classification
+
+Rule-based, NO ML, fully explainable:
+
+| Pattern | Root Cause | Confidence |
+|---------|------------|------------|
+| Manifest unreachable | Origin/CDN Outage | High |
+| Manifest OK + segment 404s | Encoder/Packager Issue | Medium |
+| High TTFB + low ratio | Network Congestion | Medium |
+| Just high TTFB | CDN Edge Latency | Low |
+| No clear pattern | Insufficient evidence | — |
+
+**Why rule-based**: Operators need to trust the diagnosis. Every classification has clear evidence they can verify.
+
+## Quick Start
+
+### Docker
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/amagi-hls-monitor.git
-cd amagi-hls-monitor
-
-# Start the system
+docker compose down
 docker compose up --build
 ```
 
-Access the dashboard at: `http://localhost:3000`
+Access: `http://localhost:3000`
 
-## 📝 API Documentation
+### Local Development
+```bash
+# Terminal 1: Backend
+cd backend && pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --port 8000
 
-The backend provides a comprehensive REST API. Once running, access the interactive docs at:
-`http://localhost:8000/docs`
+# Terminal 2: Frontend
+cd frontend && npm install && npm run dev
+```
 
-## 📦 Deployment
+## Architecture
 
-This project is Docker-ready and can be deployed to any platform supporting Docker Compose (Render, Railway, AWS ECS, DigitalOcean).
+```
+┌─────────────────────────────────────────────────────┐
+│                    Frontend                         │
+│  Monitoring → Investigation → Analysis              │
+└────────────────────────┬────────────────────────────┘
+                         │ /api
+┌────────────────────────▼────────────────────────────┐
+│                    Backend                          │
+│  Stream Monitor → Health Service → Incident Service │
+└─────────────────────────────────────────────────────┘
+```
 
-### Deploy to Render (Free)
-1. Fork this repo
-2. Create a new **Blueprint** on Render
-3. Connect your repo
-4. Deploy!
+## Intentional Non-Goals
 
-## 📄 License
+| Feature | Why Excluded |
+|---------|--------------|
+| Database | In-memory sufficient for 1-3 streams |
+| TR-101-290 | Deep MPEG-TS analysis out of scope |
+| SCTE-35 parsing | Ad insertion is separate concern |
+| Audio loudness | DSP accuracy is a rabbit hole |
+| Authentication | Demo context only |
 
-MIT License
+**Why no database**: Bounded history in memory is sufficient. This simplifies deployment and demonstrates scope control.
+
+## API Endpoints
+
+```
+GET  /api/streams                       # List streams
+GET  /api/streams/{id}                  # Details + root cause
+GET  /api/streams/{id}/metrics/history  # Chart data
+GET  /api/incidents                     # All incidents
+POST /api/incidents/{id}/acknowledge    # Acknowledge
+```
+
+## Resume Line
+
+> Designed and built a layered HLS monitoring platform with incident detection, root-cause classification, and metrics-based analysis for stream reliability.
+
+## License
+
+MIT

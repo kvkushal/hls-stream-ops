@@ -1,165 +1,164 @@
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse
-from typing import List, Optional
-from datetime import datetime, timedelta
-from app.models import (
-    StreamConfig, StreamDetails, StreamStatus, SegmentMetrics,
-    VariantStream, StreamEvent, TimeRange, KPIData, StreamHealth,
-    HealthScore, AudioMetrics, VideoMetrics, AlertModel
-)
-from app.services.stream_monitor import stream_monitor
-from app.services.sprite_generator import sprite_generator
-from app.services.logger_service import log_service
-from app.services.alert_service import alert_service
-from app.services.thumbnail_generator import thumbnail_generator
-import uuid
+"""
+Streams API - Stream Management Endpoints (Simplified)
+
+Endpoints:
+- GET /streams - List all streams with health summaries
+- GET /streams/{id} - Get stream details with active incident
+- POST /streams - Add stream
+- DELETE /streams/{id} - Remove stream
+- GET /streams/{id}/timeline - Recent events (last 5 min)
+
+Removed (see implementation_plan.md):
+- /sprites, /loudness, /audio-metrics, /video-metrics
+- /scte35-events, /alerts (replaced by incidents)
+"""
 
 import json
-from pathlib import Path
+import uuid
 import logging
+from pathlib import Path
+from typing import List, Optional
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
+
 from app.config import settings
+from app.models import (
+    StreamConfig, StreamSummary, StreamDetails, StreamStatus,
+    TimelineEvent
+)
+from app.services.stream_monitor import stream_monitor
+from app.services.incident_service import incident_service
+from app.services.thumbnail_generator import thumbnail_generator
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/streams", tags=["streams"])
 
-# In-memory storage (would be database in production)
-streams_db: dict = {}
-metrics_db: dict = {}  # stream_id -> list of SegmentMetrics
-events_db: dict = {}  # stream_id -> list of events
+# =============================================================================
+# PERSISTENCE (Simple JSON file)
+# =============================================================================
 
 STREAMS_FILE = Path(settings.DATA_DIR) / "streams.json"
+
 
 def save_streams():
     """Save streams to JSON file."""
     try:
-        data = [s.dict() for s in streams_db.values()]
+        STREAMS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = [
+            {
+                "id": config.id,
+                "name": config.name,
+                "manifest_url": config.manifest_url,
+                "enabled": config.enabled,
+                "created_at": config.created_at.isoformat()
+            }
+            for config in stream_monitor.active_streams.values()
+        ]
         with open(STREAMS_FILE, 'w') as f:
-            json.dump(data, f, default=str, indent=2)
+            json.dump(data, f, indent=2)
+        logger.debug(f"Saved {len(data)} streams to persistence")
     except Exception as e:
         logger.error(f"Failed to save streams: {e}")
 
+
 async def load_persisted_streams():
-    """Load streams from JSON file."""
+    """Load streams from JSON file on startup."""
     try:
         if not STREAMS_FILE.exists():
+            logger.info("No persisted streams file found")
             return
-            
+        
         with open(STREAMS_FILE, 'r') as f:
             data = json.load(f)
-            
+        
         for item in data:
-            config = StreamConfig(**item)
-            streams_db[config.id] = config
-            metrics_db[config.id] = []
-            events_db[config.id] = []
+            # Handle old format gracefully
+            created_at = item.get('created_at')
+            if isinstance(created_at, str):
+                created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            else:
+                created_at = datetime.utcnow()
             
-            # Start monitoring
+            config = StreamConfig(
+                id=item['id'],
+                name=item['name'],
+                manifest_url=item['manifest_url'],
+                enabled=item.get('enabled', True),
+                created_at=created_at
+            )
             await stream_monitor.add_stream(config)
-            
+        
         logger.info(f"Loaded {len(data)} streams from persistence")
     except Exception as e:
         logger.error(f"Failed to load streams: {e}")
 
 
-@router.get("", response_model=List[StreamDetails])
-async def list_streams():
-    """Get all monitored streams."""
-    result = []
-    
-    for stream_id, config in stream_monitor.active_streams.items():
-        # Get latest metrics
-        current_metrics = None
-        if stream_id in stream_monitor.stream_metrics:
-            current_metrics = stream_monitor.stream_metrics[stream_id]
-        elif stream_id in metrics_db and metrics_db[stream_id]:
-            current_metrics = metrics_db[stream_id][-1]
-        
-        # Get health with updated score
-        health = stream_monitor.get_stream_health(stream_id)
-        status = StreamStatus.OFFLINE
-        if health:
-            status = health.status
+# =============================================================================
+# ENDPOINTS
+# =============================================================================
 
-        details = StreamDetails(
-            id=stream_id,
-            name=config.name,
-            status=status,
-            version="2.1.9",
-            start_time=config.created_at,
-            manifest_url=config.manifest_url,
-            tags=config.tags,
-            variant_streams=[],
-            current_metrics=current_metrics,
-            health=health if health else StreamHealth(status=status),
-            kpi_data=KPIData()
-        )
-        result.append(details)
+@router.get("", response_model=List[StreamSummary])
+async def list_streams():
+    """
+    List all monitored streams with health summaries.
     
-    return result
+    Each stream includes:
+    - Current health state (GREEN/YELLOW/RED)
+    - Whether there's an active incident
+    - Latest thumbnail URL
+    """
+    return stream_monitor.list_streams()
 
 
 @router.get("/{stream_id}", response_model=StreamDetails)
 async def get_stream(stream_id: str):
-    """Get detailed information about a stream."""
-    if stream_id not in stream_monitor.active_streams:
+    """
+    Get detailed information about a stream.
+    
+    Includes:
+    - Full health information with reason
+    - Active incident (if any) with timeline
+    - Current segment metrics
+    """
+    details = stream_monitor.get_stream_details(stream_id)
+    
+    if not details:
         raise HTTPException(status_code=404, detail="Stream not found")
     
-    config = stream_monitor.active_streams[stream_id]
+    return details
+
+
+@router.post("", response_model=StreamSummary)
+async def create_stream(name: str, manifest_url: str):
+    """
+    Add a new stream to monitor.
     
-    current_metrics = None
-    if stream_id in stream_monitor.stream_metrics:
-        current_metrics = stream_monitor.stream_metrics[stream_id]
-    elif stream_id in metrics_db and metrics_db[stream_id]:
-        current_metrics = metrics_db[stream_id][-1]
+    The stream will start monitoring immediately.
+    Health and incidents will be tracked automatically.
+    """
+    stream_id = str(uuid.uuid4())[:8]
     
-    # Get health with updated score
-    health = stream_monitor.get_stream_health(stream_id)
-    status = health.status if health else StreamStatus.ONLINE
-    
-    return StreamDetails(
+    config = StreamConfig(
         id=stream_id,
-        name=config.name,
-        status=status,
-        version="2.1.9",
-        start_time=config.created_at,
-        manifest_url=config.manifest_url,
-        service_name="StreamProbeX",
-        tags=config.tags,
-        variant_streams=[],
-        current_metrics=current_metrics,
-        health=health if health else StreamHealth(status=status),
-        kpi_data=KPIData()
+        name=name,
+        manifest_url=manifest_url,
+        enabled=True,
+        created_at=datetime.utcnow()
     )
-
-
-@router.post("", response_model=StreamDetails)
-async def create_stream(config: StreamConfig):
-    """Add a new stream to monitor."""
-    # Generate ID if not provided
-    if not config.id:
-        config.id = str(uuid.uuid4())
     
-    # Add to monitor
     await stream_monitor.add_stream(config)
-    
-    # Store in DB
-    streams_db[config.id] = config
-    metrics_db[config.id] = []
-    events_db[config.id] = []
-    
     save_streams()
     
-    return StreamDetails(
-        id=config.id,
-        name=config.name,
+    # Return initial summary
+    return StreamSummary(
+        id=stream_id,
+        name=name,
         status=StreamStatus.STARTING,
-        version="2.1.9",
-        start_time=config.created_at,
-        manifest_url=config.manifest_url,
-        tags=config.tags,
-        variant_streams=[],
-        kpi_data=KPIData()
+        health=stream_monitor.health_states.get(stream_id),
+        has_active_incident=False
     )
 
 
@@ -170,292 +169,58 @@ async def delete_stream(stream_id: str):
         raise HTTPException(status_code=404, detail="Stream not found")
     
     await stream_monitor.remove_stream(stream_id)
-    
-    # Remove from DB
-    if stream_id in streams_db:
-        del streams_db[stream_id]
-    if stream_id in metrics_db:
-        del metrics_db[stream_id]
-    if stream_id in events_db:
-        del events_db[stream_id]
-        
     save_streams()
     
     return {"status": "deleted", "stream_id": stream_id}
 
 
-@router.get("/{stream_id}/metrics", response_model=List[SegmentMetrics])
-async def get_metrics(
+@router.get("/{stream_id}/timeline", response_model=List[TimelineEvent])
+async def get_timeline(
     stream_id: str,
-    range: TimeRange = Query(TimeRange.THREE_MIN)
+    limit: int = Query(50, le=100)
 ):
-    """Get segment metrics for a time range."""
+    """
+    Get recent timeline events for a stream.
+    
+    This returns the last N events, regardless of whether
+    there's an active incident. Useful for recent history.
+    """
     if stream_id not in stream_monitor.active_streams:
         raise HTTPException(status_code=404, detail="Stream not found")
     
-    if stream_id not in metrics_db:
-        return []
+    # Get from active incident if exists
+    incident = incident_service.get_active_incident(stream_id)
+    if incident:
+        return incident.timeline[-limit:]
     
-    # Calculate time threshold
-    now = datetime.utcnow()
-    time_ranges = {
-        TimeRange.THREE_MIN: timedelta(minutes=3),
-        TimeRange.THIRTY_MIN: timedelta(minutes=30),
-        TimeRange.THREE_HOUR: timedelta(hours=3),
-        TimeRange.EIGHT_HOUR: timedelta(hours=8),
-        TimeRange.TWO_DAY: timedelta(days=2),
-        TimeRange.FOUR_DAY: timedelta(days=4)
-    }
-    
-    threshold = now - time_ranges.get(range, timedelta(minutes=3))
-    
-    # Filter metrics
-    filtered = [
-        m for m in metrics_db[stream_id]
-        if m.timestamp >= threshold
-    ]
-    
-    return filtered
-
-
-@router.get("/{stream_id}/sprites")
-async def get_sprites(stream_id: str):
-    """Get sprite maps for a stream."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    sprites = sprite_generator.get_all_sprites(stream_id)
-    return {"sprites": sprites}
-
-
-@router.get("/{stream_id}/segments", response_model=List[SegmentMetrics])
-async def get_segments(
-    stream_id: str,
-    limit: int = Query(100, le=1000),
-    offset: int = Query(0, ge=0)
-):
-    """Get segment list with pagination."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    if stream_id not in metrics_db:
-        return []
-    
-    all_metrics = metrics_db[stream_id]
-    
-    # Newest first
-    sorted_metrics = sorted(all_metrics, key=lambda x: x.timestamp, reverse=True)
-    
-    return sorted_metrics[offset:offset + limit]
-
-
-@router.get("/{stream_id}/loudness")
-async def get_loudness(
-    stream_id: str,
-    range: TimeRange = Query(TimeRange.THREE_MIN)
-):
-    """Get loudness data for a time range."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    # Read from logs
-    now = datetime.utcnow()
-    time_ranges = {
-        TimeRange.THREE_MIN: timedelta(minutes=3),
-        TimeRange.THIRTY_MIN: timedelta(minutes=30),
-        TimeRange.THREE_HOUR: timedelta(hours=3),
-        TimeRange.EIGHT_HOUR: timedelta(hours=8),
-        TimeRange.TWO_DAY: timedelta(days=2),
-        TimeRange.FOUR_DAY: timedelta(days=4)
-    }
-    
-    start_date = now - time_ranges.get(range, timedelta(minutes=3))
-    
-    events = await log_service.read_events(
-        start_date, now,
-        stream_id=stream_id,
-        event_type="loudness_analyzed",
-        limit=1000
-    )
-    
-    loudness_data = [event.get("loudness", {}) for event in events if "loudness" in event]
-    
-    return {"loudness_data": loudness_data}
-
-
-@router.get("/{stream_id}/events")
-async def get_events(
-    stream_id: str,
-    event_type: Optional[str] = None,
-    limit: int = Query(100, le=1000),
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None
-):
-    """Get event log for a stream."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    if not start_date:
-        start_date = datetime.utcnow() - timedelta(hours=24)
-    if not end_date:
-        end_date = datetime.utcnow()
-    
-    events = await log_service.read_events(
-        start_date, end_date,
-        stream_id=stream_id,
-        event_type=event_type,
-        limit=limit
-    )
-    
-    return {"events": events, "count": len(events)}
-
-
-@router.get("/{stream_id}/health")
-async def get_stream_health(stream_id: str):
-    """Get detailed health status for a stream."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    health = stream_monitor.get_stream_health(stream_id)
-    if not health:
-        raise HTTPException(status_code=404, detail="Health data not available")
-    
-    return health
-
-
-@router.get("/{stream_id}/video-metrics")
-async def get_video_metrics(
-    stream_id: str,
-    range: TimeRange = Query(TimeRange.THREE_MIN)
-):
-    """Get video-specific metrics for a stream."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    # Get metrics history
-    metrics = stream_monitor.get_metrics_history(stream_id, limit=200)
-    
-    # Transform to video-specific format
-    video_data = []
-    for m in metrics:
-        video_data.append({
-            "timestamp": m.timestamp.isoformat(),
-            "bitrate_mbps": m.actual_bitrate,
-            "download_speed_mbps": m.download_speed,
-            "ttfb_ms": m.ttfb,
-            "download_time_ms": m.download_time,
-            "segment_duration_s": m.segment_duration,
-            "segment_size_mb": m.segment_size_mb,
-            "resolution": m.resolution
-        })
-    
-    # Get current video metrics if available
-    current = None
-    if stream_id in stream_monitor.video_metrics:
-        current = stream_monitor.video_metrics[stream_id]
-    
-    return {
-        "history": video_data,
-        "current": current
-    }
-
-
-@router.get("/{stream_id}/audio-metrics")
-async def get_audio_metrics(
-    stream_id: str,
-    range: TimeRange = Query(TimeRange.THREE_MIN)
-):
-    """Get audio-specific metrics for a stream."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    # Get from in-memory history (faster)
-    audio_data = stream_monitor.loudness_history.get(stream_id, [])
-    
-    # Apply time range filter
-    now = datetime.utcnow()
-    time_ranges = {
-        TimeRange.THREE_MIN: timedelta(minutes=3),
-        TimeRange.THIRTY_MIN: timedelta(minutes=30),
-        TimeRange.THREE_HOUR: timedelta(hours=3),
-        TimeRange.EIGHT_HOUR: timedelta(hours=8),
-        TimeRange.TWO_DAY: timedelta(days=2),
-        TimeRange.FOUR_DAY: timedelta(days=4)
-    }
-    
-    start_date = now - time_ranges.get(range, timedelta(minutes=3))
-    
-    # Filter by time range
-    filtered_data = []
-    for item in audio_data:
-        try:
-            ts = item.get("timestamp")
-            if ts:
-                if isinstance(ts, str):
-                    ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                if ts.replace(tzinfo=None) >= start_date:
-                    filtered_data.append(item)
-        except:
-            filtered_data.append(item)  # Include if we can't parse timestamp
-    
-    # Get current audio metrics if available
-    current = None
-    health = stream_monitor.stream_health.get(stream_id)
-    if health and health.audio_metrics:
-        current = {
-            "bitrate_kbps": health.audio_metrics.bitrate_kbps,
-            "sample_rate": health.audio_metrics.sample_rate,
-            "channels": health.audio_metrics.channels,
-            "codec": health.audio_metrics.codec
-        }
-    
-    return {
-        "history": filtered_data,
-        "current": current,
-        "count": len(filtered_data)
-    }
+    # Otherwise return empty (no incident = no timeline in our model)
+    return []
 
 
 @router.get("/{stream_id}/thumbnail")
-async def get_latest_thumbnail(stream_id: str):
-    """Get the latest thumbnail for a stream."""
+async def get_thumbnail(stream_id: str):
+    """Get the latest thumbnail URL for a stream."""
     if stream_id not in stream_monitor.active_streams:
         raise HTTPException(status_code=404, detail="Stream not found")
     
-    # Try to get cached thumbnail
-    thumb_info = thumbnail_generator.get_latest_thumbnail_info(stream_id)
+    thumb_path = thumbnail_generator.get_cached_thumbnail(stream_id)
     
-    if not thumb_info:
-        # Fallback to current metrics
-        current_metrics = stream_monitor.stream_metrics.get(stream_id)
-        if not current_metrics or current_metrics.sequence_number is None:
-            raise HTTPException(status_code=404, detail="No thumbnail available")
-        
-        thumbnail_path = f"/data/thumbnails/{stream_id}_{current_metrics.sequence_number}.jpg"
-        return {
-            "thumbnail_url": thumbnail_path,
-            "sequence_number": current_metrics.sequence_number,
-            "timestamp": current_metrics.timestamp.isoformat(),
-            "cached": False
-        }
+    if not thumb_path:
+        raise HTTPException(status_code=404, detail="No thumbnail available")
     
     return {
-        "thumbnail_url": f"/data/thumbnails/{Path(thumb_info['path']).name}",
-        "sequence_number": thumb_info["sequence_number"],
-        "expires_in": thumb_info["expires_in"],
-        "is_fresh": thumb_info["is_fresh"],
-        "cached": True
+        "thumbnail_url": f"/data/thumbnails/{Path(thumb_path).name}",
+        "stream_id": stream_id
     }
 
 
 @router.get("/{stream_id}/thumbnail/file")
 async def get_thumbnail_file(stream_id: str):
-    """Get the thumbnail file directly with proper caching headers."""
+    """Get the thumbnail image file directly."""
     if stream_id not in stream_monitor.active_streams:
         raise HTTPException(status_code=404, detail="Stream not found")
     
-    # Get cached thumbnail path
-    thumb_path = stream_monitor.get_latest_thumbnail_path(stream_id)
+    thumb_path = thumbnail_generator.get_cached_thumbnail(stream_id)
     
     if not thumb_path or not Path(thumb_path).exists():
         raise HTTPException(status_code=404, detail="No thumbnail available")
@@ -463,77 +228,79 @@ async def get_thumbnail_file(stream_id: str):
     return FileResponse(
         thumb_path,
         media_type="image/jpeg",
-        headers={
-            "Cache-Control": "public, max-age=30",  # Cache for 30 seconds
-            "X-Sequence": str(thumbnail_generator._cache.get(stream_id, [None, None, 0])[2])
-        }
+        headers={"Cache-Control": "public, max-age=30"}
     )
 
 
-@router.get("/{stream_id}/alerts")
-async def get_stream_alerts(
+# =============================================================================
+# ANALYSIS MODE ENDPOINTS
+# =============================================================================
+
+@router.get("/{stream_id}/metrics/history")
+async def get_metrics_history(
     stream_id: str,
-    include_resolved: bool = Query(False)
+    minutes: int = Query(30, le=60)
 ):
-    """Get alerts for a stream."""
+    """
+    Get metrics history for Analysis Mode charts.
+    
+    Returns time series data for:
+    - TTFB over time
+    - Download ratio over time
+    - Error rate per minute
+    - Health state changes
+    
+    This is the ONLY place charts should get their data.
+    """
     if stream_id not in stream_monitor.active_streams:
         raise HTTPException(status_code=404, detail="Stream not found")
     
-    if include_resolved:
-        alerts = alert_service.get_alert_history(stream_id=stream_id, limit=100)
-    else:
-        alerts = alert_service.get_active_alerts(stream_id)
+    # Get metrics from window
+    if stream_id not in stream_monitor.metrics_windows:
+        return {"data_points": [], "health_timeline": []}
+    
+    window = stream_monitor.metrics_windows[stream_id]
+    metrics = list(window.metrics)
+    
+    # Filter to requested time range
+    cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+    
+    # Build data points
+    data_points = []
+    for m in metrics:
+        if m.timestamp > cutoff:
+            data_points.append({
+                "timestamp": m.timestamp.isoformat(),
+                "ttfb_ms": m.ttfb,
+                "download_ratio": m.download_ratio,
+                "is_error": m.is_error
+            })
+    
+    # Build health timeline from history if available
+    health_timeline = []
+    if stream_id in stream_monitor.health_history:
+        for entry in stream_monitor.health_history[stream_id]:
+            if entry["timestamp"] > cutoff:
+                health_timeline.append({
+                    "timestamp": entry["timestamp"].isoformat(),
+                    "state": entry["state"]
+                })
+    
+    # Calculate error rate per minute
+    error_counts_by_minute = {}
+    for m in metrics:
+        if m.timestamp > cutoff and m.is_error:
+            minute_key = m.timestamp.replace(second=0, microsecond=0).isoformat()
+            error_counts_by_minute[minute_key] = error_counts_by_minute.get(minute_key, 0) + 1
+    
+    error_rate_series = [
+        {"timestamp": ts, "error_count": count}
+        for ts, count in sorted(error_counts_by_minute.items())
+    ]
     
     return {
-        "alerts": [a.to_dict() for a in alerts],
-        "active_count": len([a for a in alerts if not a.resolved]),
-        "total_count": len(alerts)
-    }
-
-
-@router.post("/{stream_id}/alerts/{alert_id}/acknowledge")
-async def acknowledge_alert(stream_id: str, alert_id: str):
-    """Acknowledge an alert."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    success = alert_service.acknowledge_alert(stream_id, alert_id)
-    
-    if not success:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    
-    return {"status": "acknowledged", "alert_id": alert_id}
-
-
-@router.get("/{stream_id}/logs")
-async def get_stream_logs(
-    stream_id: str,
-    limit: int = Query(500, le=1000)
-):
-    """Get logs for a specific stream."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    logs = await log_service.read_stream_logs(stream_id, limit=limit)
-    
-    return {
-        "logs": logs,
-        "count": len(logs),
-        "stream_id": stream_id
-    }
-
-
-@router.get("/{stream_id}/scte35-events")
-async def get_scte35_events(stream_id: str):
-    """Get SCTE-35 ad marker events for a stream."""
-    if stream_id not in stream_monitor.active_streams:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    events = stream_monitor.scte35_events.get(stream_id, [])
-    count = stream_monitor.scte35_counts.get(stream_id, 0)
-    
-    return {
-        "events": events,
-        "total_count": count,
-        "stream_id": stream_id
+        "stream_id": stream_id,
+        "data_points": data_points,
+        "health_timeline": health_timeline,
+        "error_rate_series": error_rate_series
     }

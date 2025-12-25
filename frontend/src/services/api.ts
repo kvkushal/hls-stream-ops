@@ -1,3 +1,12 @@
+/**
+ * API Service - HLS Monitoring Platform
+ * 
+ * Supports 3 modes:
+ * - Monitoring: streams list, health summaries
+ * - Investigation: incidents, timeline, root cause
+ * - Analysis: metrics history, charts
+ */
+
 import axios from 'axios'
 
 const API_BASE_URL = '/api'
@@ -9,74 +18,126 @@ const api = axios.create({
     },
 })
 
+// Types for API responses
+export interface StreamHealth {
+    state: 'green' | 'yellow' | 'red'
+    reason: string
+    last_updated: string
+    error_count_2min: number
+    avg_ttfb_ms: number
+    avg_download_ratio: number
+}
+
+export interface RootCause {
+    label: string
+    confidence: 'low' | 'medium' | 'high'
+    evidence: string[]
+}
+
+export interface StreamSummary {
+    id: string
+    name: string
+    status: string
+    health: StreamHealth
+    has_active_incident: boolean
+    active_incident_id: string | null
+    thumbnail_url: string | null
+}
+
+export interface TimelineEvent {
+    event_id: string
+    timestamp: string
+    event_type: string
+    message: string
+    metadata: Record<string, any>
+    thumbnail_url: string | null
+}
+
+export interface Incident {
+    incident_id: string
+    stream_id: string
+    status: 'open' | 'acknowledged' | 'resolved'
+    trigger_reason: string
+    started_at: string
+    acknowledged_at: string | null
+    resolved_at: string | null
+    metrics_snapshot: Record<string, any>
+    timeline: TimelineEvent[]
+}
+
+export interface StreamDetails {
+    id: string
+    name: string
+    manifest_url: string
+    status: string
+    health: StreamHealth
+    created_at: string
+    root_cause: RootCause | null
+    current_metrics: any | null
+    active_incident: Incident | null
+    recent_events: TimelineEvent[]
+}
+
+// Analysis Mode types
+export interface MetricsDataPoint {
+    timestamp: string
+    ttfb_ms: number
+    download_ratio: number
+    is_error: boolean
+}
+
+export interface HealthTimelineEntry {
+    timestamp: string
+    state: string
+}
+
+export interface ErrorRateEntry {
+    timestamp: string
+    error_count: number
+}
+
+export interface MetricsHistory {
+    stream_id: string
+    data_points: MetricsDataPoint[]
+    health_timeline: HealthTimelineEntry[]
+    error_rate_series: ErrorRateEntry[]
+}
+
 export const streamApi = {
-    // Stream management
-    getStreams: () => api.get('/streams'),
-    getStream: (streamId: string) => api.get(`/streams/${streamId}`),
-    createStream: (data: any) => api.post('/streams', data),
+    // Monitoring Mode
+    getStreams: () => api.get<StreamSummary[]>('/streams'),
+    getStream: (streamId: string) => api.get<StreamDetails>(`/streams/${streamId}`),
+    createStream: (name: string, manifestUrl: string) =>
+        api.post<StreamSummary>('/streams', null, {
+            params: { name, manifest_url: manifestUrl }
+        }),
     deleteStream: (streamId: string) => api.delete(`/streams/${streamId}`),
 
-    // Metrics
-    getMetrics: (streamId: string, range: string) =>
-        api.get(`/streams/${streamId}/metrics`, { params: { range } }),
-
-    // Sprites
-    getSprites: (streamId: string) => api.get(`/streams/${streamId}/sprites`),
-
-    // Segments
-    getSegments: (streamId: string, limit = 100, offset = 0) =>
-        api.get(`/streams/${streamId}/segments`, { params: { limit, offset } }),
-
-    // Loudness
-    getLoudness: (streamId: string, range: string) =>
-        api.get(`/streams/${streamId}/loudness`, { params: { range } }),
-
-    // Events
-    getEvents: (streamId: string, params?: any) =>
-        api.get(`/streams/${streamId}/events`, { params }),
-
-    // Health
-    getHealth: () => api.get('/health'),
-    getStreamHealth: (streamId: string) => api.get(`/streams/${streamId}/health`),
-
-    // Alerts
-    getAlerts: (streamId: string, includeResolved = false) =>
-        api.get(`/streams/${streamId}/alerts`, { params: { include_resolved: includeResolved } }),
-    acknowledgeAlert: (streamId: string, alertId: string) =>
-        api.post(`/streams/${streamId}/alerts/${alertId}/acknowledge`),
-
-    // Stream Logs
-    getStreamLogs: (streamId: string, limit = 500) =>
-        api.get(`/streams/${streamId}/logs`, { params: { limit } }),
-
     // Thumbnails
-    getThumbnail: (streamId: string) => api.get(`/streams/${streamId}/thumbnail`),
     getThumbnailUrl: (streamId: string) => `/api/streams/${streamId}/thumbnail/file`,
 
-    // Video Metrics
-    getVideoMetrics: (streamId: string, range: string) =>
-        api.get(`/streams/${streamId}/video-metrics`, { params: { range } }),
+    // Investigation Mode
+    getTimeline: (streamId: string, limit = 50) =>
+        api.get<TimelineEvent[]>(`/streams/${streamId}/timeline`, { params: { limit } }),
 
-    // Audio Metrics  
-    getAudioMetrics: (streamId: string, range: string) =>
-        api.get(`/streams/${streamId}/audio-metrics`, { params: { range } }),
+    // Analysis Mode
+    getMetricsHistory: (streamId: string, minutes = 30) =>
+        api.get<MetricsHistory>(`/streams/${streamId}/metrics/history`, { params: { minutes } }),
+}
 
-    // SCTE-35 Events
-    getScte35Events: (streamId: string) =>
-        api.get(`/streams/${streamId}/scte35-events`),
+export const incidentApi = {
+    getIncidents: (activeOnly = true, streamId?: string) =>
+        api.get<Incident[]>('/incidents', {
+            params: { active_only: activeOnly, stream_id: streamId }
+        }),
+    getIncident: (incidentId: string) =>
+        api.get<Incident>(`/incidents/${incidentId}`),
+    acknowledgeIncident: (incidentId: string) =>
+        api.post<Incident>(`/incidents/${incidentId}/acknowledge`),
+}
 
-    // Export URLs (direct download links)
-    getExportMetricsUrl: (streamId: string) => `/api/export/${streamId}/metrics.csv`,
-    getExportAlertsUrl: (streamId: string) => `/api/export/${streamId}/alerts.csv`,
-    getExportScte35Url: (streamId: string) => `/api/export/${streamId}/scte35.csv`,
-    getExportLoudnessUrl: (streamId: string) => `/api/export/${streamId}/loudness.csv`,
-
-    // Webhooks
-    getWebhooks: () => api.get('/webhooks'),
-    createWebhook: (data: any) => api.post('/webhooks', data),
-    updateWebhook: (webhookId: string, data: any) => api.put(`/webhooks/${webhookId}`, data),
-    deleteWebhook: (webhookId: string) => api.delete(`/webhooks/${webhookId}`),
-    testWebhook: (webhookId: string) => api.post(`/webhooks/${webhookId}/test`),
+export const healthApi = {
+    getSystemHealth: () => api.get('/health'),
 }
 
 export default api

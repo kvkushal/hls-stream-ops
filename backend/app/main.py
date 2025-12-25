@@ -1,18 +1,23 @@
+"""
+Stream Failure Analysis & Incident Investigation Tool - FastAPI Application
+
+Refactored from over-scoped monitoring platform to focused incident tool.
+See implementation_plan.md for design decisions.
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import logging
-import asyncio
 from pathlib import Path
 
 from app.config import settings
 from app.api import streams, websocket, health
-from app.api import export as export_api
-from app.api import webhooks as webhooks_api
+from app.api import incidents  # NEW: Incident endpoints
 from app.services.stream_monitor import stream_monitor
-from app.services.logger_service import log_service
-from app.services.webhook_service import webhook_service
+from app.models import HealthStatus
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -23,35 +28,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Background task for log rotation
-async def log_rotation_worker():
-    """Background worker for log rotation."""
-    while True:
-        try:
-            await asyncio.sleep(3600)  # Check every hour
-            await log_service.rotate_logs()
-        except Exception as e:
-            logger.error(f"Log rotation error: {e}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager for startup and shutdown."""
     # Startup
-    logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info(f"Starting Stream Failure Analysis Tool v2.0.0")
     
     # Start stream monitor
     await stream_monitor.start()
     
-    # Start webhook service
-    await webhook_service.start()
-    
     # Load persisted streams
     from app.api.streams import load_persisted_streams
     await load_persisted_streams()
-    
-    # Start log rotation worker
-    rotation_task = asyncio.create_task(log_rotation_worker())
     
     logger.info("Application started successfully")
     
@@ -59,24 +47,15 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down application...")
-    
-    # Stop stream monitor
     await stream_monitor.stop()
-    
-    # Stop webhook service
-    await webhook_service.stop()
-    
-    # Cancel rotation task
-    rotation_task.cancel()
-    
     logger.info("Application shut down")
 
 
 # Create FastAPI app
 app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    description="Production-grade OTT Stream Monitoring System",
+    title="Stream Failure Analysis Tool",
+    version="2.0.0",
+    description="Incident-driven HLS stream failure analysis for broadcast operations",
     lifespan=lifespan
 )
 
@@ -89,28 +68,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files (for serving sprites and thumbnails)
+# Mount static files (for serving thumbnails)
 data_dir = Path(settings.DATA_DIR)
 data_dir.mkdir(parents=True, exist_ok=True)
-
 app.mount("/data", StaticFiles(directory=str(data_dir)), name="data")
 
 # Include routers
 app.include_router(streams.router)
+app.include_router(incidents.router, prefix="/api", tags=["incidents"])
 app.include_router(websocket.router)
 app.include_router(health.router)
-app.include_router(export_api.router)
-app.include_router(webhooks_api.router)
+
+# Removed: export_api, webhooks_api (out of scope)
 
 
 @app.get("/")
 async def root():
     """Root endpoint."""
     return {
-        "name": settings.APP_NAME,
-        "version": settings.APP_VERSION,
+        "name": "Stream Failure Analysis Tool",
+        "version": "2.0.0",
+        "description": "Incident-driven HLS stream failure analysis",
         "status": "running"
     }
+
+
+@app.get("/health", response_model=HealthStatus)
+async def health_check():
+    """Health check endpoint."""
+    from app.services.incident_service import incident_service
+    
+    return HealthStatus(
+        status="healthy",
+        timestamp=datetime.utcnow(),
+        version="2.0.0",
+        streams_monitored=stream_monitor.get_stream_count(),
+        active_incidents=len(incident_service.active_incidents)
+    )
 
 
 if __name__ == "__main__":

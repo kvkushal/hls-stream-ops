@@ -1,28 +1,29 @@
 version: '3.8'
 
+# Stream Failure Analysis Tool - Docker Compose
+# 
+# Simplified from original (removed nginx reverse proxy - unnecessary for demo)
+
 services:
   # Backend API
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: streamprobe-api
+    container_name: stream-analysis-api
     ports:
       - "8000:8000"
     volumes:
-      - ./logs:/app/logs
       - ./data:/app/data
     environment:
       - DEBUG=False
       - HOST=0.0.0.0
       - PORT=8000
-      - LOGS_DIR=/app/logs
       - DATA_DIR=/app/data
       - THUMBNAILS_DIR=/app/data/thumbnails
-      - SPRITES_DIR=/app/data/sprites
       - SEGMENTS_DIR=/app/data/segments
     networks:
-      - streamprobe
+      - stream-analysis
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -35,37 +36,20 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: streamprobe-frontend
+    container_name: stream-analysis-frontend
     ports:
       - "3000:80"
     depends_on:
       - api
     networks:
-      - streamprobe
+      - stream-analysis
     volumes:
-      - ./data:/usr/share/nginx/html/data
-    restart: unless-stopped
-  
-  # Nginx reverse proxy
-  nginx:
-    image: nginx:alpine
-    container_name: streamprobe-nginx
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-    depends_on:
-      - api
-      - frontend
-    networks:
-      - streamprobe
+      - ./data:/usr/share/nginx/html/data:ro
     restart: unless-stopped
 
 networks:
-  streamprobe:
+  stream-analysis:
     driver: bridge
 
 volumes:
-  logs:
   data:
