@@ -9,10 +9,20 @@
 
 import axios from 'axios'
 
-// Use environment variable for production (Render), fallback to /api for local dev
+// Use environment variable for production (Render), fallback to relative paths for local dev
 const API_BASE_URL = import.meta.env.VITE_API_URL
     ? `${import.meta.env.VITE_API_URL}/api`
     : '/api'
+
+// Base URL for static files (thumbnails, etc.)
+const DATA_BASE_URL = import.meta.env.VITE_API_URL || ''
+
+// Helper to get full thumbnail URL
+export const getFullUrl = (path: string | null): string | null => {
+    if (!path) return null
+    if (path.startsWith('http')) return path
+    return `${DATA_BASE_URL}${path}`
+}
 
 const api = axios.create({
     baseURL: API_BASE_URL,

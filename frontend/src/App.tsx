@@ -10,7 +10,7 @@
 import React, { useEffect, useState } from 'react'
 import './index.css'
 import {
-    streamApi, incidentApi,
+    streamApi, incidentApi, getFullUrl,
     StreamSummary, StreamDetails, Incident, RootCause,
     MetricsHistory
 } from './services/api'
@@ -113,7 +113,7 @@ const StreamCard: React.FC<{
             {stream.thumbnail_url && (
                 <div className="mt-3 aspect-video bg-gray-800 rounded overflow-hidden">
                     <img
-                        src={stream.thumbnail_url}
+                        src={getFullUrl(stream.thumbnail_url) || ''}
                         alt="Stream thumbnail"
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
