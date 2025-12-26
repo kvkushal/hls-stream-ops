@@ -8,123 +8,108 @@
 
 ## Overview
 
-HLS Stream Operations helps engineers answer three specific questions quickly:
+HLS Stream Operations helps engineers answer three critical questions:
 
 1. **Is a stream healthy right now?**
 2. **What exactly went wrong when it wasn't?**
 3. **Are issues recurring over time?**
 
-This project prioritizes clarity, explainability, and practical diagnostics over exhaustive, deep-packet video analysis. It serves as a bridge between high-level alerts and deep debugging.
+This project prioritizes clarity and practical diagnostics over exhaustive analysis. It serves as a bridge between high-level alerts and deep debugging.
 
-## Key Capabilities
+---
 
-### 📡 Stream Monitoring
+## Core Features
 
-The system periodically polls HLS manifests and segments to measure real-time performance.
+### Real-Time Monitoring
+Monitor HLS streams with automatic health assessment across three states:
 
-* **Metrics:** Tracks Time to First Byte (TTFB), download time, download ratio (time vs. duration), and error counts.
-* **Health States:**
-  * 🟢 **GREEN:** Healthy
-  * 🟡 **YELLOW:** Degraded (performance issues)
-  * 🔴 **RED:** Unhealthy (playback failure)
-* **Context:** Every state change includes a human-readable reason.
+- 🟢 **HEALTHY** - All metrics within normal ranges
+- 🟡 **DEGRADED** - Performance issues detected, not yet critical
+- 🔴 **UNHEALTHY** - Playback failure, requires immediate attention
 
-### 🚨 Incident Detection
+Every health state includes a human-readable explanation of what triggered it.
 
-Incidents are created automatically to reduce noise.
+### Automatic Incident Detection
+The system creates incidents automatically when streams degrade:
 
-* Triggered when health hits **RED** or if **YELLOW** persists past a specific threshold.
-* Enforces a "one active incident per stream" rule.
-* Auto-resolves when the stream returns to **GREEN**.
+- Triggered on transition to UNHEALTHY or prolonged DEGRADED state
+- One active incident per stream (simplifies investigation)
+- Auto-resolves when stream returns to HEALTHY
 
-### 🕵️ Investigation & Timeline
+### Investigation Tools
+Debug issues with the incident timeline, the primary diagnostic artifact:
 
-The primary debugging artifact is the Incident Timeline.
+- Logs every segment success/failure with timestamps
+- Tracks health state transitions
+- Records incident lifecycle (Opened, Acknowledged, Resolved)
+- Generates thumbnails from video segments for visual context
 
-* Logs segment successes/failures and health transitions.
-* Tracks incident lifecycle (Opened, Acknowledged, Resolved).
-* **Visual Context:** Generates thumbnails from video segments so you can *see* the corruption or issue.
+### Root Cause Classification
+Uses rule-based logic (not ML) to classify failures with confidence scores:
 
-### 🧠 Root Cause Classification
+- **Origin/CDN Outage** - Manifest unreachable
+- **Encoder/Packager Issue** - Manifest OK but segments failing
+- **Network Congestion** - High latency with slow downloads
+- **CDN Edge Latency** - Elevated response times
+- **Intermittent Issues** - Sporadic errors without clear pattern
 
-Explains *why* a stream failed without using "black box" machine learning. The system uses rule-based logic to classify issues with confidence scores.
+Every classification includes verifiable evidence.
 
-* **Classifications include:** Origin/CDN outage, encoder/packager issues, network congestion, edge latency, and intermittent failures.
+### Analysis Mode
+Historical context using rolling in-memory windows:
 
-### 📊 Analysis Mode
-
-Provides historical context using rolling in-memory windows.
-
-* Charts for TTFB, download ratios, and error rates.
-* Visualizes health state changes over time.
+- Time to First Byte (TTFB) trends
+- Download ratio over time
+- Error rate per minute
+- Health state timeline
 
 ---
 
 ## Architecture
-
-The system uses a decoupled architecture with a FastAPI backend and a React frontend.
-```mermaid
-graph TD
-    User[Browser] --> Frontend
-    Frontend[React + Vite] -->|REST / WebSocket| Backend
-    subgraph Backend [FastAPI]
-        Monitor[Stream Monitor]
-        Health[Health Evaluation]
-        Incident[Incident Manager]
-        RCA[Root Cause Classification]
-    end
+```
+┌─────────────────────────────────────────┐
+│            React Frontend               │
+│  Monitoring → Investigation → Analysis  │
+└────────────────┬────────────────────────┘
+                 │ REST API
+┌────────────────▼────────────────────────┐
+│           FastAPI Backend               │
+│  Monitor → Health Service → Incidents   │
+└─────────────────────────────────────────┘
 ```
 
-## Technology Stack
-
-### Backend
-
-* **Python 3.11**
-* **FastAPI**: For high-performance API handling.
-* **Asyncio / Aiohttp**: For non-blocking HTTP polling.
-* **FFmpeg / FFprobe**: Used for segment probing and thumbnail generation.
-
-### Frontend
-
-* **React + TypeScript**: Type-safe UI components.
-* **Vite**: Fast build tool and dev server.
-* **Tailwind CSS**: Utility-first styling.
-* **Nginx**: Serves the frontend in production containers.
-
-### Infrastructure
-
-* **Docker & Compose**: Containerization.
-* **Render / Vercel**: Deployment targets.
+**Backend:** Python 3.11, FastAPI, asyncio/aiohttp, FFmpeg  
+**Frontend:** React, TypeScript, Vite, Tailwind CSS  
+**Infrastructure:** Docker Compose, deployable to Render
 
 ---
 
-## Running Locally
+## Quick Start
 
-### Option 1: Using Docker (Recommended)
+### Docker (Recommended)
 
-This is the easiest way to run the full stack, as it handles the FFmpeg dependency automatically.
+The easiest way to run the full stack with all dependencies:
 ```bash
 docker compose up --build
 ```
 
-**Access the services:**
+**Access:**
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
-* Frontend: `http://localhost:3000`
-* Backend API: `http://localhost:8000`
-* API Docs: `http://localhost:8000/docs`
+### Local Development
 
-### Option 2: Local Development (Manual)
+**Prerequisites:** Python 3.11+, Node 18+, FFmpeg installed
 
-**Prerequisite:** You must have `ffmpeg` installed on your system path.
-
-**Backend Setup:**
+**Backend:**
 ```bash
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-**Frontend Setup:**
+**Frontend:**
 ```bash
 cd frontend
 npm install
@@ -137,36 +122,110 @@ npm run dev
 
 ### Adding a Stream
 
-You can add a stream via the UI or using a CURL command:
+Via UI or API:
 ```bash
 curl -X POST "http://localhost:8000/api/streams?name=TestStream&manifest_url=https://example.com/master.m3u8"
 ```
 
-*Stream configuration is persisted locally in a JSON file.*
+Stream configuration is persisted to a local JSON file.
 
 ### Core API Endpoints
 
 | Method | Endpoint | Description |
-| --- | --- | --- |
+|--------|----------|-------------|
 | `GET` | `/api/streams` | List all monitored streams |
-| `GET` | `/api/streams/{id}` | Get details for a specific stream |
-| `POST` | `/api/streams` | Add a new stream to monitor |
-| `DELETE` | `/api/streams/{id}` | Stop monitoring a stream |
-| `GET` | `/api/incidents` | List all recorded incidents |
-| `POST` | `/api/incidents/{id}/acknowledge` | Acknowledge an active incident |
-| `GET` | `/api/streams/{id}/metrics/history` | Get historical metric data |
+| `GET` | `/api/streams/{id}` | Get stream details with health and incidents |
+| `POST` | `/api/streams` | Add a new stream |
+| `DELETE` | `/api/streams/{id}` | Remove a stream |
+| `GET` | `/api/incidents` | List incidents (filterable) |
+| `POST` | `/api/incidents/{id}/acknowledge` | Acknowledge an incident |
+| `GET` | `/api/streams/{id}/metrics/history` | Get historical metrics for charts |
+
+---
+
+## Design Philosophy
+
+### Three-Layer Interface
+
+**Monitoring Mode** - Stream list with health badges. Maximum clarity, no charts.  
+**Investigation Mode** - Timeline and root cause analysis for active incidents.  
+**Analysis Mode** - Charts and trends for deeper investigation.
+
+Charts are hidden by default because operators need fast diagnosis first, not more data.
+
+### Data Strategy
+
+- **Configuration** - Persisted to lightweight JSON file
+- **Operational State** - In-memory with rolling windows
+- **Health Windows** - Short 2-minute windows for quick detection
+- **Analysis History** - Longer 30-60 minute windows for trend analysis
+
+### Rule-Based Classification
+
+Root cause analysis uses explicit rules instead of machine learning. This ensures every diagnosis is explainable and verifiable by operators.
+
+---
+
+## Deployment
+
+### Render (Backend + Frontend)
+
+**Backend Service:**
+1. Create a new Web Service on Render
+2. Connect your GitHub repository
+3. Set root directory: `backend`
+4. Set build command: `pip install -r requirements.txt`
+5. Set start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+6. Add environment variable: `PORT=8000`
+
+**Frontend Service:**
+1. Create a new Web Service on Render
+2. Connect the same GitHub repository
+3. Set root directory: `frontend`
+4. Set build command: `npm install && npm run build`
+5. Set start command: (leave empty, uses Dockerfile)
+6. Add environment variable: `VITE_API_URL=https://your-backend-service.onrender.com`
+
+### VPS with Docker
+```bash
+docker compose up -d
+```
 
 ---
 
 ## Intentional Limitations
 
-This project is scoped for reliability monitoring and incident diagnosis, not full broadcast compliance. It intentionally excludes:
+This project focuses on reliability monitoring and incident diagnosis, not broadcast compliance:
 
-* MPEG-TS deep analysis (TR-101-290)
-* SCTE-35 ad marker parsing
-* Audio loudness analysis
-* Persistent databases (uses local JSON/memory for simplicity)
-* Authentication or multi-tenant support
+**Excluded by design:**
+- MPEG-TS deep analysis (TR-101-290)
+- SCTE-35 ad marker parsing
+- Audio loudness measurement
+- Persistent databases (uses JSON/memory)
+- Authentication or multi-tenancy
+
+These features would add complexity without improving the core workflow.
+
+---
+
+## Health Check
+```bash
+curl http://localhost:8000/health
+```
+
+Returns system status, monitored streams count, and active incidents.
+
+---
+
+## Contributing
+
+This is a focused tool with a specific scope. Before suggesting features, consider if they serve the core workflow: monitoring, detecting issues, and investigating failures.
+
+---
+
+## License
+
+MIT
 
 ---
 
