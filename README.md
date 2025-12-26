@@ -1,121 +1,175 @@
 # HLS Stream Operations
 
-A layered HLS stream monitoring platform with incident detection, root-cause classification, and metrics-based analysis for stream reliability.
+**A lightweight platform for monitoring HLS streams, detecting playback issues, and investigating incidents.**
 
-## Design Philosophy
+**Live Demo:** [https://hls-stream-ops.onrender.com](https://hls-stream-ops.onrender.com)
 
-> "Operators don't need more metrics — they need faster diagnosis."
+---
 
-This system separates **detection**, **diagnosis**, and **analysis** into distinct modes:
+## Overview
 
-| Mode | Purpose | UI |
-|------|---------|-----|
-| **Monitoring** | Is something wrong? | Stream list + health badges |
-| **Investigation** | What broke and why? | Timeline + root cause |
-| **Analysis** | Is this getting worse? | Charts (TTFB, errors, ratio) |
+HLS Stream Operations helps engineers answer three specific questions quickly:
 
-**Why charts are hidden by default**: Operators should see clarity first. Charts support investigation, they don't replace it.
+1. **Is a stream healthy right now?**
+2. **What exactly went wrong when it wasn't?**
+3. **Are issues recurring over time?**
 
-**Data strategy**: Configuration is persisted via a lightweight JSON file. Operational state (metrics, health) remains in-memory with rolling windows. Health decisions use short 2-minute windows; analysis uses longer 30-60 minute history.
+This project prioritizes clarity, explainability, and practical diagnostics over exhaustive, deep-packet video analysis. It serves as a bridge between high-level alerts and deep debugging.
 
-## Core Features
+## Key Capabilities
 
-### 1. Monitoring Mode
-- Stream list with HEALTHY/DEGRADED/UNHEALTHY badges
-- One-line reason: "Average TTFB 720ms exceeded 500ms threshold (last 2 min)"
-- Active incident indicators
-- No charts — maximum clarity
+### 📡 Stream Monitoring
 
-### 2. Investigation Mode
-- Incident timeline (primary diagnostic artifact)
-- **Root cause classification** with evidence:
-  - Origin/CDN Outage (High confidence)
-  - Encoder/Packager Issue (Medium confidence)
-  - Network Congestion (Medium confidence)
-  - CDN Edge Latency (Low confidence)
-- Acknowledge incident action
+The system periodically polls HLS manifests and segments to measure real-time performance.
 
-### 3. Analysis Mode
-- TTFB over time with threshold line
-- Error rate per minute
-- Download ratio trend
-- Health state timeline
+* **Metrics:** Tracks Time to First Byte (TTFB), download time, download ratio (time vs. duration), and error counts.
+* **Health States:**
+  * 🟢 **GREEN:** Healthy
+  * 🟡 **YELLOW:** Degraded (performance issues)
+  * 🔴 **RED:** Unhealthy (playback failure)
+* **Context:** Every state change includes a human-readable reason.
 
-## Root Cause Classification
+### 🚨 Incident Detection
 
-Rule-based, NO ML, fully explainable:
+Incidents are created automatically to reduce noise.
 
-| Pattern | Root Cause | Confidence |
-|---------|------------|------------|
-| Manifest unreachable | Origin/CDN Outage | High |
-| Manifest OK + segment 404s | Encoder/Packager Issue | Medium |
-| High TTFB + low ratio | Network Congestion | Medium |
-| Just high TTFB | CDN Edge Latency | Low |
-| No clear pattern | Insufficient evidence | — |
+* Triggered when health hits **RED** or if **YELLOW** persists past a specific threshold.
+* Enforces a "one active incident per stream" rule.
+* Auto-resolves when the stream returns to **GREEN**.
 
-**Why rule-based**: Operators need to trust the diagnosis. Every classification has clear evidence they can verify.
+### 🕵️ Investigation & Timeline
 
-## Quick Start
+The primary debugging artifact is the Incident Timeline.
 
-### TL;DR for Demo
-- **Frontend**: Deploy on Vercel
-- **Backend**: Deploy on Render
-- **Local**: `docker compose up --build` → http://localhost:3000
+* Logs segment successes/failures and health transitions.
+* Tracks incident lifecycle (Opened, Acknowledged, Resolved).
+* **Visual Context:** Generates thumbnails from video segments so you can *see* the corruption or issue.
 
-### Docker
+### 🧠 Root Cause Classification
+
+Explains *why* a stream failed without using "black box" machine learning. The system uses rule-based logic to classify issues with confidence scores.
+
+* **Classifications include:** Origin/CDN outage, encoder/packager issues, network congestion, edge latency, and intermittent failures.
+
+### 📊 Analysis Mode
+
+Provides historical context using rolling in-memory windows.
+
+* Charts for TTFB, download ratios, and error rates.
+* Visualizes health state changes over time.
+
+---
+
+## Architecture
+
+The system uses a decoupled architecture with a FastAPI backend and a React frontend.
+```mermaid
+graph TD
+    User[Browser] --> Frontend
+    Frontend[React + Vite] -->|REST / WebSocket| Backend
+    subgraph Backend [FastAPI]
+        Monitor[Stream Monitor]
+        Health[Health Evaluation]
+        Incident[Incident Manager]
+        RCA[Root Cause Classification]
+    end
+```
+
+## Technology Stack
+
+### Backend
+
+* **Python 3.11**
+* **FastAPI**: For high-performance API handling.
+* **Asyncio / Aiohttp**: For non-blocking HTTP polling.
+* **FFmpeg / FFprobe**: Used for segment probing and thumbnail generation.
+
+### Frontend
+
+* **React + TypeScript**: Type-safe UI components.
+* **Vite**: Fast build tool and dev server.
+* **Tailwind CSS**: Utility-first styling.
+* **Nginx**: Serves the frontend in production containers.
+
+### Infrastructure
+
+* **Docker & Compose**: Containerization.
+* **Render / Vercel**: Deployment targets.
+
+---
+
+## Running Locally
+
+### Option 1: Using Docker (Recommended)
+
+This is the easiest way to run the full stack, as it handles the FFmpeg dependency automatically.
 ```bash
 docker compose up --build
 ```
 
-### Local Development
+**Access the services:**
+
+* Frontend: `http://localhost:3000`
+* Backend API: `http://localhost:8000`
+* API Docs: `http://localhost:8000/docs`
+
+### Option 2: Local Development (Manual)
+
+**Prerequisite:** You must have `ffmpeg` installed on your system path.
+
+**Backend Setup:**
 ```bash
-# Terminal 1: Backend
-cd backend && pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8000
-
-# Terminal 2: Frontend
-cd frontend && npm install && npm run dev
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    Frontend                         │
-│  Monitoring → Investigation → Analysis              │
-└────────────────────────┬────────────────────────────┘
-                         │ /api
-┌────────────────────────▼────────────────────────────┐
-│                    Backend                          │
-│  Stream Monitor → Health Service → Incident Service │
-└─────────────────────────────────────────────────────┘
+**Frontend Setup:**
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-## Intentional Non-Goals
+---
 
-| Feature | Why Excluded |
-|---------|--------------|
-| Database | In-memory sufficient for 1-3 streams |
-| TR-101-290 | Deep MPEG-TS analysis out of scope |
-| SCTE-35 parsing | Ad insertion is separate concern |
-| Audio loudness | DSP accuracy is a rabbit hole |
-| Authentication | Demo context only |
+## Usage
 
-## API Endpoints
+### Adding a Stream
 
-```
-GET  /api/streams                       # List streams
-GET  /api/streams/{id}                  # Details + root cause
-GET  /api/streams/{id}/metrics/history  # Chart data
-GET  /api/incidents                     # All incidents
-POST /api/incidents/{id}/acknowledge    # Acknowledge
-GET  /health                            # System health
+You can add a stream via the UI or using a CURL command:
+```bash
+curl -X POST "http://localhost:8000/api/streams?name=TestStream&manifest_url=https://example.com/master.m3u8"
 ```
 
-## Resume Line
+*Stream configuration is persisted locally in a JSON file.*
 
-> Designed and built a layered HLS monitoring platform with incident detection, root-cause classification, and metrics-based analysis for stream reliability.
+### Core API Endpoints
 
-## License
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/streams` | List all monitored streams |
+| `GET` | `/api/streams/{id}` | Get details for a specific stream |
+| `POST` | `/api/streams` | Add a new stream to monitor |
+| `DELETE` | `/api/streams/{id}` | Stop monitoring a stream |
+| `GET` | `/api/incidents` | List all recorded incidents |
+| `POST` | `/api/incidents/{id}/acknowledge` | Acknowledge an active incident |
+| `GET` | `/api/streams/{id}/metrics/history` | Get historical metric data |
 
-MIT
+---
+
+## Intentional Limitations
+
+This project is scoped for reliability monitoring and incident diagnosis, not full broadcast compliance. It intentionally excludes:
+
+* MPEG-TS deep analysis (TR-101-290)
+* SCTE-35 ad marker parsing
+* Audio loudness analysis
+* Persistent databases (uses local JSON/memory for simplicity)
+* Authentication or multi-tenant support
+
+---
+
+## Author
+
+**Kushal KV**
