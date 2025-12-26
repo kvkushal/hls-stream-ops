@@ -217,18 +217,6 @@ Returns system status, monitored streams count, and active incidents.
 
 ---
 
-## Contributing
-
-This is a focused tool with a specific scope. Before suggesting features, consider if they serve the core workflow: monitoring, detecting issues, and investigating failures.
-
----
-
-## License
-
-MIT
-
----
-
 ## Author
 
 **Kushal KV**
