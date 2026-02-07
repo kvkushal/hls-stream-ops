@@ -1,222 +1,249 @@
-# HLS Stream Operations
+# StreamProbeX
+### Incident-Driven HLS Reliability Platform
 
-**A lightweight platform for monitoring HLS streams, detecting playback issues, and investigating incidents.**
+A reliability-focused system for detecting, classifying, and investigating HLS stream failures in real time.
 
-**Live Demo:** [https://hls-stream-ops.onrender.com](https://hls-stream-ops.onrender.com)
+Unlike traditional monitoring dashboards that focus on charts and metrics, StreamProbeX is built around the operator workflow: detect → investigate → resolve.
 
----
-
-## Overview
-
-HLS Stream Operations helps engineers answer three critical questions:
-
-1. **Is a stream healthy right now?**
-2. **What exactly went wrong when it wasn't?**
-3. **Are issues recurring over time?**
-
-This project prioritizes clarity and practical diagnostics over exhaustive analysis. It serves as a bridge between high-level alerts and deep debugging.
+**Live Demo:** https://hls-stream-ops.onrender.com
 
 ---
 
-## Core Features
+## Why This Exists
 
-### Real-Time Monitoring
-Monitor HLS streams with automatic health assessment across three states:
+Monitoring tools answer:
 
-- 🟢 **HEALTHY** - All metrics within normal ranges
-- 🟡 **DEGRADED** - Performance issues detected, not yet critical
-- 🔴 **UNHEALTHY** - Playback failure, requires immediate attention
+> “Is it up?”
 
-Every health state includes a human-readable explanation of what triggered it.
+Reliability systems answer:
 
-### Automatic Incident Detection
-The system creates incidents automatically when streams degrade:
+> “What failed? Why? Is it recurring?”
 
-- Triggered on transition to UNHEALTHY or prolonged DEGRADED state
-- One active incident per stream (simplifies investigation)
-- Auto-resolves when stream returns to HEALTHY
+StreamProbeX is designed around that second question.
 
-### Investigation Tools
-Debug issues with the incident timeline, the primary diagnostic artifact:
+This project explores how live video platforms can move from metric-heavy dashboards to incident-driven diagnostics that prioritize clarity, explainability, and fast root cause isolation.
 
-- Logs every segment success/failure with timestamps
-- Tracks health state transitions
-- Records incident lifecycle (Opened, Acknowledged, Resolved)
-- Generates thumbnails from video segments for visual context
+---
 
-### Root Cause Classification
-Uses rule-based logic (not ML) to classify failures with confidence scores:
+## What Makes This Different
 
-- **Origin/CDN Outage** - Manifest unreachable
-- **Encoder/Packager Issue** - Manifest OK but segments failing
-- **Network Congestion** - High latency with slow downloads
-- **CDN Edge Latency** - Elevated response times
-- **Intermittent Issues** - Sporadic errors without clear pattern
+This is not just an HLS monitor.
 
-Every classification includes verifiable evidence.
+It models a simplified version of a real video operations workflow:
 
-### Analysis Mode
-Historical context using rolling in-memory windows:
+- Health state transitions
+- Automatic incident creation
+- Timeline-based investigation
+- Rule-based root cause classification
+- Confidence scoring
+- Minimal, operator-first interface
 
-- Time to First Byte (TTFB) trends
-- Download ratio over time
-- Error rate per minute
-- Health state timeline
+The goal is not more data.
+The goal is better decisions.
+
+---
+
+## Core Design Principles
+
+### 1. Health Is a State, Not a Score
+
+Instead of arbitrary percentages, streams move between:
+
+- 🟢 HEALTHY  
+- 🟡 DEGRADED  
+- 🔴 UNHEALTHY  
+
+Every transition includes a human-readable explanation.
+
+No noise. No vanity metrics.
+
+---
+
+### 2. Incident-Centric Architecture
+
+Incidents are first-class objects in the system.
+
+When a stream degrades:
+
+- An incident is automatically created
+- Timeline logging begins
+- Health transitions are recorded
+- Root cause is evaluated continuously
+- Incident auto-resolves on recovery
+
+This mirrors real production reliability workflows.
+
+---
+
+### 3. Explainable Root Cause Classification
+
+Failures are classified using explicit rules, not machine learning.
+
+Possible classifications:
+
+- Origin/CDN outage
+- Encoder or packaging failure
+- Network congestion
+- CDN edge latency
+- Intermittent instability
+
+Each diagnosis includes:
+
+- Evidence
+- Confidence level
+- Supporting metrics
+
+Every decision is auditable.
+
+---
+
+### 4. Three-Layer Operator Interface
+
+Monitoring → Investigation → Analysis
+
+**Monitoring Mode**
+Stream list with health states. No charts. Maximum clarity.
+
+**Investigation Mode**
+Incident timeline with segment-level events and classification logic.
+
+**Analysis Mode**
+Trend charts for deeper context when needed.
+
+Charts are intentionally secondary.
+
+Diagnosis comes first.
 
 ---
 
 ## Architecture
+
 ```
-┌─────────────────────────────────────────┐
-│            React Frontend               │
-│  Monitoring → Investigation → Analysis  │
-└────────────────┬────────────────────────┘
-                 │ REST API
-┌────────────────▼────────────────────────┐
-│           FastAPI Backend               │
-│  Monitor → Health Service → Incidents   │
-└─────────────────────────────────────────┘
+React Frontend
+  └─ Monitoring / Investigation / Analysis
+
+REST API
+
+FastAPI Backend
+  ├─ Stream Monitor (async polling)
+  ├─ Health Evaluation Engine
+  ├─ Incident Service
+  ├─ Rule-Based Classifier
+  └─ Metrics Aggregation Layer
 ```
 
-**Backend:** Python 3.11, FastAPI, asyncio/aiohttp, FFmpeg  
-**Frontend:** React, TypeScript, Vite, Tailwind CSS  
-**Infrastructure:** Docker Compose, deployable to Render
+**Backend**
+- Python 3.11
+- FastAPI
+- asyncio / aiohttp
+- FFmpeg integration
+
+**Frontend**
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+
+**Infrastructure**
+- Docker Compose
+- Deployable to Render
+- In-memory + lightweight JSON persistence
 
 ---
 
-## Quick Start
+## Data Strategy
 
-### Docker (Recommended)
+Designed intentionally lightweight:
 
-The easiest way to run the full stack with all dependencies:
-```bash
-docker compose up --build
-```
+- Configuration stored in JSON
+- Operational state stored in rolling memory windows
+- Short windows (2 min) for detection
+- Longer windows (30–60 min) for trend analysis
 
-**Access:**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
-
-### Local Development
-
-**Prerequisites:** Python 3.11+, Node 18+, FFmpeg installed
-
-**Backend:**
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
+This keeps the system responsive while preserving context.
 
 ---
 
-## Usage
+## Reliability Model
 
-### Adding a Stream
+The system evaluates:
 
-Via UI or API:
-```bash
-curl -X POST "http://localhost:8000/api/streams?name=TestStream&manifest_url=https://example.com/master.m3u8"
-```
+- Manifest availability
+- Segment download success ratio
+- Time To First Byte (TTFB)
+- Latency patterns
+- Error density
 
-Stream configuration is persisted to a local JSON file.
-
-### Core API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/streams` | List all monitored streams |
-| `GET` | `/api/streams/{id}` | Get stream details with health and incidents |
-| `POST` | `/api/streams` | Add a new stream |
-| `DELETE` | `/api/streams/{id}` | Remove a stream |
-| `GET` | `/api/incidents` | List incidents (filterable) |
-| `POST` | `/api/incidents/{id}/acknowledge` | Acknowledge an incident |
-| `GET` | `/api/streams/{id}/metrics/history` | Get historical metrics for charts |
-
----
-
-## Design Philosophy
-
-### Three-Layer Interface
-
-**Monitoring Mode** - Stream list with health badges. Maximum clarity, no charts.  
-**Investigation Mode** - Timeline and root cause analysis for active incidents.  
-**Analysis Mode** - Charts and trends for deeper investigation.
-
-Charts are hidden by default because operators need fast diagnosis first, not more data.
-
-### Data Strategy
-
-- **Configuration** - Persisted to lightweight JSON file
-- **Operational State** - In-memory with rolling windows
-- **Health Windows** - Short 2-minute windows for quick detection
-- **Analysis History** - Longer 30-60 minute windows for trend analysis
-
-### Rule-Based Classification
-
-Root cause analysis uses explicit rules instead of machine learning. This ensures every diagnosis is explainable and verifiable by operators.
+Failures are not binary.
+They are contextual.
 
 ---
 
 ## Deployment
 
-### Render (Backend + Frontend)
-
-**Backend Service:**
-1. Create a new Web Service on Render
-2. Connect your GitHub repository
-3. Set root directory: `backend`
-4. Set build command: `pip install -r requirements.txt`
-5. Set start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-6. Add environment variable: `PORT=8000`
-
-**Frontend Service:**
-1. Create a new Web Service on Render
-2. Connect the same GitHub repository
-3. Set root directory: `frontend`
-4. Set build command: `npm install && npm run build`
-5. Set start command: (leave empty, uses Dockerfile)
-6. Add environment variable: `VITE_API_URL=https://your-backend-service.onrender.com`
-
-### VPS with Docker
+### Docker (Recommended)
 ```bash
-docker compose up -d
+docker compose up --build
 ```
+
+Frontend: http://localhost:3000  
+Backend API: http://localhost:8000  
+Docs: http://localhost:8000/docs  
 
 ---
 
-## Intentional Limitations
+## Intentional Scope
 
-This project focuses on reliability monitoring and incident diagnosis, not broadcast compliance:
+This project focuses on:
 
-**Excluded by design:**
-- MPEG-TS deep analysis (TR-101-290)
-- SCTE-35 ad marker parsing
-- Audio loudness measurement
-- Persistent databases (uses JSON/memory)
-- Authentication or multi-tenancy
+- Reliability monitoring
+- Incident lifecycle modeling
+- Root cause explainability
+- Operator workflow design
 
-These features would add complexity without improving the core workflow.
+It intentionally excludes:
+
+- Deep MPEG-TS compliance analysis
+- SCTE-35 parsing
+- Persistent databases
+- Multi-tenancy
+- Authentication layers
+
+The goal is architectural clarity, not broadcast compliance tooling.
 
 ---
 
-## Health Check
-```bash
-curl http://localhost:8000/health
-```
+## How This Differs From My Monitoring-Focused HLS Project
 
-Returns system status, monitored streams count, and active incidents.
+That project focused on:
+
+- Real-time health scoring
+- Metrics dashboards
+- Log exports
+- Stream analytics
+
+This project focuses on:
+
+- Incident modeling
+- State transitions
+- Rule-based root cause analysis
+- Reliability engineering principles
+
+Monitoring observes.
+Reliability explains.
+
+---
+
+## Future Improvements
+
+- Persistent event storage
+- Alerting integrations (Slack, PagerDuty)
+- Fault injection simulator
+- Multi-stream scaling layer
+- Distributed monitoring agents
 
 ---
 
 ## Author
 
-**Kushal KV**
+Kushal KV  
